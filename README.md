@@ -148,7 +148,7 @@ npm run electron:dev
 ## 贡献者
 
 <a href="https://github.com/gncysy">
-  <img src="https://avatars.githubusercontent.com/u/gncysy?v=4" width="50" height="50" style="border-radius:50%" alt="gncysy"/>
+  <img src="https://avatars.githubusercontent.com/u/199947456?v=4" width="50" height="50" style="border-radius:50%" alt="gncysy"/>
 </a>
 
 ## 许可证
