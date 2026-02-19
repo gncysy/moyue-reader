@@ -62,6 +62,33 @@ function startJavaBackend() {
   })
 }
 
+// 在 app.whenReady() 之前添加
+ipcMain.on('window-minimize', () => {
+  mainWindow?.minimize()
+})
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize()
+  } else {
+    mainWindow?.maximize()
+  }
+  return { isMaximized: mainWindow?.isMaximized() }
+})
+
+ipcMain.on('window-close', () => {
+  mainWindow?.close()
+})
+
+// 监听窗口状态变化
+mainWindow?.on('maximize', () => {
+  mainWindow?.webContents.send('window-maximized-changed', true)
+})
+
+mainWindow?.on('unmaximize', () => {
+  mainWindow?.webContents.send('window-maximized-changed', false)
+})
+
 app.whenReady().then(() => {
   startJavaBackend()
   createWindow()
