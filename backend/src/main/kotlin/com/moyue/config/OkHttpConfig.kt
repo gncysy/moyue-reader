@@ -22,15 +22,6 @@ class OkHttpConfig {
             .writeTimeout(15, TimeUnit.SECONDS)
             .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
             .addInterceptor(logging)
-            .addInterceptor { chain ->
-                // 自动添加 Cookie
-                val request = chain.request()
-                val cookies = request.header("Cookie") ?: ""
-                
-                // 可以在这里添加全局 Cookie 管理
-                
-                chain.proceed(request)
-            }
             .build()
     }
 }
