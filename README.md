@@ -177,15 +177,6 @@ npm run electron:dev
 4. 推送到分支 (`git push origin feature/xxx`)
 5. 打开 Pull Request
 
-## 👥 贡献者
-
-<div align="left">
-  <a href="https://github.com/gncysy">
-    <img src="https://avatars.githubusercontent.com/u/199947456?v=4" width="48" height="48" style="border-radius: 50%; margin-right: 10px;" alt="gncysy">
-  </a>
-  <a href="https://github.com/gncysy"><strong>gncysy</strong></a> · 项目创建者、核心开发者
-</div>
-
 <br>
 
 > 📢 欢迎更多贡献者加入！你的名字会出现在这里。
@@ -216,9 +207,4 @@ npm run electron:dev
 
 <div align="center">
   <sub>✨ 如果这个项目对你有帮助，欢迎 Star ⭐️</sub>
-</div>
----
-
-<div align="center">
-  <sub>✨ 如果墨阅对你有帮助，欢迎 Star ⭐️</sub>
 </div>
