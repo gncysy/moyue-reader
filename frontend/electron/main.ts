@@ -9,37 +9,39 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    minWidth: 1000,
+    minHeight: 600,
+    frame: false, // 👈 关键：移除系统标题栏
+    titleBarStyle: 'hidden', // MacOS 也隐藏
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
-    }
+    },
+    icon: path.join(__dirname, '../build/icon.ico')
   })
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
-    mainWindow.webContents.openDevTools()
+    // 开发环境可以打开 devtools
+    // mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
+
+  mainWindow.on('ready-to-show', () => {
+    mainWindow?.show()
+  })
 }
 
+// 启动 Java 后端
 function startJavaBackend() {
   const isDev = process.env.NODE_ENV === 'development'
-  let javaPath = 'java'
-  let jarPath = ''
+  const jarPath = isDev
+    ? path.join(__dirname, '../../backend/build/libs/moyue-backend.jar')
+    : path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'moyue-backend.jar')
 
-  if (!isDev) {
-    const jrePath = path.join(process.resourcesPath, 'jre', 'bin', 'java.exe')
-    if (require('fs').existsSync(jrePath)) {
-      javaPath = jrePath
-    }
-    jarPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'moyue-backend.jar')
-  } else {
-    jarPath = path.join(__dirname, '../../backend/build/libs/moyue-backend.jar')
-  }
-
-  javaProcess = spawn(javaPath, ['-jar', jarPath], {
+  javaProcess = spawn('java', ['-jar', jarPath], {
     stdio: 'pipe',
     detached: false
   })
