@@ -9,22 +9,21 @@ import com.moyue.util.MD5Utils
 import com.moyue.util.AESUtils
 import com.moyue.util.RSAUtils
 import com.moyue.util.DESUtils
-import okhttp3.FormBody
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import org.mozilla.javascript.Context
-import org.mozilla.javascript.NativeObject
-import org.mozilla.javascript.ScriptableObject
+import okhttp3.MediaType.Companion.toMediaType
 import org.springframework.stereotype.Component
 import java.io.File
 import java.net.URLEncoder
-import java.nio.charset.Charset
-import java.util.concurrent.TimeUnit
+import java.security.MessageDigest
+import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * 书源 JavaScript 扩展 API
@@ -58,7 +57,9 @@ class JsExtensions(
         contextHolder.remove()
     }
     
-    private fun getContext() = contextHolder.get() ?: ExecutionContext()
+    private fun getContext(): ExecutionContext {
+        return contextHolder.get() ?: ExecutionContext()
+    }
     
     // ==================== 网络请求 ====================
     
@@ -69,17 +70,18 @@ class JsExtensions(
     
     @JvmOverloads
     fun get(url: String, headers: Map<String, String>? = null): String {
-        val request = Request.Builder()
-            .url(url)
-            .apply {
-                headers?.forEach { (k, v) -> addHeader(k, v) }
-                // 默认 User-Agent
-                if (headers?.containsKey("User-Agent") != true) {
-                    addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                }
-            }
-            .build()
+        val requestBuilder = Request.Builder().url(url).get()
         
+        headers?.forEach { (key, value) ->
+            requestBuilder.addHeader(key, value)
+        }
+        
+        // 默认 User-Agent
+        if (headers?.containsKey("User-Agent") != true) {
+            requestBuilder.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        }
+        
+        val request = requestBuilder.build()
         return executeRequest(request)
     }
     
@@ -88,50 +90,46 @@ class JsExtensions(
         val mediaType = "application/x-www-form-urlencoded; charset=utf-8".toMediaType()
         val requestBody = body.toRequestBody(mediaType)
         
-        val request = Request.Builder()
-            .url(url)
-            .post(requestBody)
-            .apply {
-                headers?.forEach { (k, v) -> addHeader(k, v) }
-            }
-            .build()
+        val requestBuilder = Request.Builder().url(url).post(requestBody)
         
-        return executeRequest(request)
+        headers?.forEach { (key, value) ->
+            requestBuilder.addHeader(key, value)
+        }
+        
+        return executeRequest(requestBuilder.build())
     }
     
     fun postJson(url: String, json: String, headers: Map<String, String>? = null): String {
         val mediaType = "application/json; charset=utf-8".toMediaType()
         val requestBody = json.toRequestBody(mediaType)
         
-        val request = Request.Builder()
-            .url(url)
-            .post(requestBody)
-            .apply {
-                headers?.forEach { (k, v) -> addHeader(k, v) }
-            }
-            .build()
+        val requestBuilder = Request.Builder().url(url).post(requestBody)
         
-        return executeRequest(request)
+        headers?.forEach { (key, value) ->
+            requestBuilder.addHeader(key, value)
+        }
+        
+        return executeRequest(requestBuilder.build())
     }
     
     fun put(url: String, body: String, headers: Map<String, String>? = null): String {
-        val request = Request.Builder()
-            .url(url)
-            .put(body.toRequestBody("application/octet-stream".toMediaType()))
-            .apply { headers?.forEach { (k, v) -> addHeader(k, v) } }
-            .build()
+        val requestBuilder = Request.Builder().url(url).put(body.toRequestBody())
         
-        return executeRequest(request)
+        headers?.forEach { (key, value) ->
+            requestBuilder.addHeader(key, value)
+        }
+        
+        return executeRequest(requestBuilder.build())
     }
     
     fun delete(url: String, headers: Map<String, String>? = null): String {
-        val request = Request.Builder()
-            .url(url)
-            .delete()
-            .apply { headers?.forEach { (k, v) -> addHeader(k, v) } }
-            .build()
+        val requestBuilder = Request.Builder().url(url).delete()
         
-        return executeRequest(request)
+        headers?.forEach { (key, value) ->
+            requestBuilder.addHeader(key, value)
+        }
+        
+        return executeRequest(requestBuilder.build())
     }
     
     private fun executeRequest(request: Request): String {
@@ -147,63 +145,64 @@ class JsExtensions(
         }
     }
     
-    // 获取完整 Response 对象（供高级使用）
     fun getResponse(url: String, headers: Map<String, String>? = null): Response {
-        val request = Request.Builder()
-            .url(url)
-            .apply { headers?.forEach { (k, v) -> addHeader(k, v) } }
-            .build()
+        val requestBuilder = Request.Builder().url(url)
         
-        return okHttpClient.newCall(request).execute()
+        headers?.forEach { (key, value) ->
+            requestBuilder.addHeader(key, value)
+        }
+        
+        return okHttpClient.newCall(requestBuilder.build()).execute()
     }
     
     // ==================== 编码加密 ====================
     
     fun base64Encode(str: String): String {
-        return java.util.Base64.getEncoder().encodeToString(str.toByteArray())
+        return Base64.getEncoder().encodeToString(str.toByteArray())
     }
     
     fun base64Decode(str: String): String {
-        return String(java.util.Base64.getDecoder().decode(str))
+        return String(Base64.getDecoder().decode(str))
     }
     
     fun md5Encode(str: String): String {
-        return MD5Utils.md5(str)
+        return MD5Utils.md5Encode(str)
     }
     
     fun sha1Encode(str: String): String {
-        val md = java.security.MessageDigest.getInstance("SHA1")
-        return md.digest(str.toByteArray()).joinToString("") { "%02x".format(it) }
+        val md = MessageDigest.getInstance("SHA-1")
+        val digest = md.digest(str.toByteArray())
+        return digest.joinToString("") { "%02x".format(it) }
     }
     
     fun aesDecodeToString(data: String, key: String, iv: String): String {
-        return AESUtils.decrypt(data, key, iv)
+        return AESUtils.decodeToString(data, key, iv)
     }
     
     fun aesEncodeToString(data: String, key: String, iv: String): String {
-        return AESUtils.encrypt(data, key, iv)
+        return AESUtils.encodeToString(data, key, iv)
     }
     
     fun rsaDecodeToString(data: String, key: String): String {
-        return RSAUtils.decrypt(data, key)
+        return RSAUtils.decodeToString(data, key)
     }
     
     fun rsaEncodeToString(data: String, key: String): String {
-        return RSAUtils.encrypt(data, key)
+        return RSAUtils.encodeToString(data, key)
     }
     
     fun desDecodeToString(data: String, key: String): String {
-        return DESUtils.decrypt(data, key)
+        return DESUtils.decodeToString(data, key)
     }
     
     fun desEncodeToString(data: String, key: String): String {
-        return DESUtils.encrypt(data, key)
+        return DESUtils.encodeToString(data, key)
     }
     
     // ==================== 文件操作 ====================
     
     private fun getWorkDir(): String {
-        return System.getProperty("user.dir")
+        return System.getProperty("user.dir") + "/MoyueData"
     }
     
     fun getCacheDir(): String {
@@ -246,7 +245,7 @@ class JsExtensions(
     
     fun getFiles(dir: String): List<String> {
         val directory = File(dir)
-        return directory.listFiles()?.map { it.name } ?: emptyList()
+        return directory.list()?.toList() ?: emptyList()
     }
     
     fun mkdirs(path: String): Boolean {
@@ -259,27 +258,6 @@ class JsExtensions(
     
     fun getFileLastModified(path: String): Long {
         return File(path).lastModified()
-    }
-    
-    fun unzipFile(zipPath: String, destPath: String) {
-        val destDir = File(destPath)
-        if (!destDir.exists()) destDir.mkdirs()
-        
-        java.util.zip.ZipFile(zipPath).use { zip ->
-            zip.entries().asSequence().forEach { entry ->
-                val newFile = File(destDir, entry.name)
-                if (entry.isDirectory) {
-                    newFile.mkdirs()
-                } else {
-                    newFile.parentFile?.mkdirs()
-                    zip.getInputStream(entry).use { input ->
-                        newFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                }
-            }
-        }
     }
     
     // ==================== Cookie 管理 ====================
@@ -384,7 +362,9 @@ class JsExtensions(
     }
     
     fun put(key: String, value: Any?) {
-        cacheService.put(key, value)
+        if (value != null) {
+            cacheService.put(key, value)
+        }
     }
     
     fun remove(key: String) {
@@ -437,6 +417,30 @@ class JsExtensions(
         preferenceService.putLong(key, value)
     }
     
+    fun getPrefFloat(key: String, default: Float): Float {
+        return preferenceService.getFloat(key, default)
+    }
+    
+    fun putPrefFloat(key: String, value: Float) {
+        preferenceService.putFloat(key, value)
+    }
+    
+    fun getPrefStringSet(key: String, default: Set<String>): Set<String> {
+        return preferenceService.getStringSet(key, default)
+    }
+    
+    fun putPrefStringSet(key: String, value: Set<String>) {
+        preferenceService.putStringSet(key, value)
+    }
+    
+    fun removePref(key: String) {
+        preferenceService.remove(key)
+    }
+    
+    fun clearPref() {
+        preferenceService.clear()
+    }
+    
     // ==================== 工具方法 ====================
     
     fun print(msg: String) {
@@ -455,8 +459,8 @@ class JsExtensions(
         return java.text.SimpleDateFormat(format).format(java.util.Date())
     }
     
-    fun timeFormat(time: Long, format: String): String {
-        return java.text.SimpleDateFormat(format).format(java.util.Date(time))
+    fun timeFormat(timestamp: Long, format: String): String {
+        return java.text.SimpleDateFormat(format).format(java.util.Date(timestamp))
     }
     
     fun parseTime(time: String, format: String): Long {
@@ -464,38 +468,28 @@ class JsExtensions(
     }
     
     fun getNetworkType(): String {
-        // 桌面端默认返回 WIFI
         return "WIFI"
     }
     
     fun startBrowser(url: String, title: String) {
-        // 调用系统默认浏览器
         val os = System.getProperty("os.name").lowercase()
         val command = when {
             os.contains("win") -> "rundll32 url.dll,FileProtocolHandler $url"
             os.contains("mac") -> "open $url"
             else -> "xdg-open $url"
         }
-        Runtime.getRuntime().exec(command)
+        try {
+            Runtime.getRuntime().exec(command)
+        } catch (e: Exception) {
+            // ignore
+        }
     }
     
     fun startBrowser(url: String, title: String, headers: Map<String, String>) {
-        // 桌面端暂不支持带 headers 的浏览器
         startBrowser(url, title)
     }
     
-    // ==================== HTML 解析辅助 ====================
-    
-    fun parseHtml(html: String): Document {
-        return Jsoup.parse(html)
-    }
-    
-    fun parseUrl(url: String, baseUrl: String): String {
-        return try {
-            val uri = java.net.URI(url)
-            if (uri.isAbsolute) url else java.net.URL(java.net.URL(baseUrl), url).toString()
-        } catch (e: Exception) {
-            url
-        }
+    fun startBrowser(url: String, title: String, headers: Map<String, String>, css: String) {
+        startBrowser(url, title)
     }
 }
