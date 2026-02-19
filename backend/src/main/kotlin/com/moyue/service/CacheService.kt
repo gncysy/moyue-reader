@@ -8,13 +8,13 @@ import java.util.concurrent.TimeUnit
 @Service
 class CacheService {
     
-    // L1: 内存缓存 (Caffeine)
+    // 内存缓存
     private val memoryCache = Caffeine.newBuilder()
         .maximumSize(1000)
         .expireAfterWrite(10, TimeUnit.MINUTES)
         .build<String, Any>()
     
-    // L2: 持久化缓存 (模拟，实际用 Redis 或 SQLite)
+    // 持久化缓存（简单实现）
     private val persistentCache = ConcurrentHashMap<String, CacheEntry>()
     
     data class CacheEntry(
@@ -22,11 +22,12 @@ class CacheService {
         val expireAt: Long
     )
     
+    // Cookie 存储
+    private val cookieStore = ConcurrentHashMap<String, MutableMap<String, String>>()
+    
     fun get(key: String): Any? {
-        // 先查内存
         memoryCache.getIfPresent(key)?.let { return it }
         
-        // 再查持久化
         val entry = persistentCache[key]
         if (entry != null && entry.expireAt > System.currentTimeMillis()) {
             memoryCache.put(key, entry.value)
@@ -60,8 +61,6 @@ class CacheService {
     }
     
     // Cookie 管理
-    private val cookieStore = ConcurrentHashMap<String, MutableMap<String, String>>()
-    
     fun getCookies(url: String): String {
         val host = extractHost(url)
         return cookieStore[host]?.entries?.joinToString("; ") { "${it.key}=${it.value}" } ?: ""
@@ -77,10 +76,10 @@ class CacheService {
         val cookies = cookieStore.getOrPut(host) { mutableMapOf() }
         
         cookie.split(";").forEach { part ->
-            val (key, value) = part.trim().split("=", limit = 2).let {
-                it[0] to (it.getOrNull(1) ?: "")
+            val parts = part.trim().split("=", limit = 2)
+            if (parts.size == 2) {
+                cookies[parts[0]] = parts[1]
             }
-            cookies[key] = value
         }
     }
     
