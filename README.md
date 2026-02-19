@@ -19,13 +19,13 @@
   <p>⭐️ 如果这个项目对你有帮助，欢迎 Star 支持！</p>
 </div>
 
-## 项目简介
+## 📖 项目简介
 
 墨阅是一个跨平台桌面阅读器，将 Android 开源阅读器 Legado 的核心功能重构为桌面应用。
 
 项目采用前后端分离架构，后端基于 Spring Boot + Kotlin，前端基于 Electron + Vue 3。目标是在保持 Legado 书源生态兼容性的同时，提供更适合桌面端的阅读体验。
 
-## 核心特点
+## ✨ 核心特点
 
 - 📚 **书源兼容**：支持导入 Legado 格式书源，延续已有的阅读生态
 - 🛡️ **安全沙箱**：提供标准/兼容/信任三级模式，用户可根据需求调节
@@ -33,7 +33,7 @@
 - 🔄 **数据互通**：书源 JSON、备份文件可与 Legado 手机版互通
 - 🚀 **跨平台**：支持 Windows / macOS / Linux
 
-## 截图预览
+## 📸 截图预览
 
 > 截图准备中，敬请期待
 
@@ -41,49 +41,49 @@
 |------|--------|----------|
 | ![书架](https://via.placeholder.com/300x200?text=书架预览) | ![阅读器](https://via.placeholder.com/300x200?text=阅读器预览) | ![书源](https://via.placeholder.com/300x200?text=书源预览) |
 
-## 功能特性
+## 🛠️ 功能特性
 
-### 书架管理
+### 📚 书架管理
 - 书籍增删改查
 - 阅读进度自动同步
 - 封面缓存与清理
 - 自定义分组
 
-### 书源系统
+### 🔍 书源系统
 - 导入/导出 Legado 格式书源（JSON）
 - 书源启用/禁用
 - 书源测试与调试
-- 兼容性分析（自动检测书源所需安全级别）
+- 兼容性分析
 
-### 阅读器
+### 📖 阅读器
 - 四种翻页模式：覆盖、仿真、滑动、滚动
 - 排版设置：字体、字号、行距、对齐方式
 - 主题切换：日间、夜间、护眼
-- 目录导航：快速跳转章节
-- 书签管理：添加/删除书签
+- 目录导航
+- 书签管理
 
-### 安全沙箱
-| 模式 | 兼容性 | 限制 |
-| --- | --- | --- |
+### 🛡️ 安全沙箱
+| 模式 | 兼容性 | 说明 |
+|:---:|:---:|:---|
 | 标准模式 | ~85% | 禁止文件/Socket/反射，适合日常阅读 |
 | 兼容模式 | ~95% | 允许文件/Socket，禁止反射，适合特殊书源 |
 | 信任模式 | ~98% | 仅超时保护，需手动确认，适合开发者调试 |
 
-### TTS 朗读
+### 🔊 TTS 朗读
 - 系统 TTS（Windows SAPI5 / macOS AVSpeech）
 - 语速调节
 - 后台播放
 
-### WebDAV 同步
+### 🔄 WebDAV 同步
 - 书架备份与恢复
 - 阅读进度同步
-- 手动/自动同步模式
+- 手动/自动同步
 
-### 本地书籍
-- TXT：自动分章（正则匹配章节标题）
+### 📄 本地书籍
+- TXT：自动分章
 - EPUB：解析目录、封面、正文
 
-## 系统架构
+## 🏗️ 系统架构
 
 ```mermaid
 graph TD
@@ -114,7 +114,7 @@ graph TD
     D --> G
 ```
 
-## 技术栈
+## 📦 技术栈
 ### 后端
 
 - Kotlin 1.9 + Spring Boot 3.2
@@ -130,7 +130,7 @@ graph TD
 - Pinia（状态管理）
 - Vue Router（路由管理）
 
-## 快速开始
+## 🚀 快速开始
 
 ### 环境要求
 
@@ -159,59 +159,64 @@ npm install
 npm run electron:dev
 ```
 
-## 下载安装
+## 📥 下载安装
 
-访问 https://github.com/gncysy/moyue-reader/releases 页面下载对应平台安装包：
+访问 [Releases](https://github.com/gncysy/moyue-reader/releases) 页面下载对应平台安装包：
 
-- Windows：.exe
-- macOS：.dmg
-- Linux：.AppImage / .deb
+- Windows：`.exe` 安装包
+- macOS：`.dmg` 安装包
+- Linux：`.AppImage` 或 `.deb` 包
 
-## 贡献指南
+## 🤝 贡献指南
 
-欢迎提交 Issue 和 Pull Request。
+欢迎提交 Issue 和 Pull Request：
 
 1. Fork 本仓库
-2. 创建特性分支 (git checkout -b feature/AmazingFeature)
-3. 提交更改 (git commit -m 'feat: add feature')
-4. 推送到分支 (git push origin feature/AmazingFeature)
+2. 创建特性分支 (`git checkout -b feature/xxx`)
+3. 提交更改 (`git commit -m 'feat: 添加xxx功能'`)
+4. 推送到分支 (`git push origin feature/xxx`)
 5. 打开 Pull Request
 
-## 贡献者
+## 👥 贡献者
 
 <div align="left">
-  <a href="https://github.com/gncysy" style="display: inline-block; text-decoration: none; color: inherit;">
-    <img src="https://avatars.githubusercontent.com/u/199947456?v=4" width="50" height="50" style="border-radius: 50%; vertical-align: middle; margin-right: 15px;" alt="gncysy">
-    <span style="vertical-align: middle;">
-      <strong>gncysy</strong> · 项目创建者、核心开发者<br>
-      <span style="font-size: 0.9em; color: #0366d6;">github.com/gncysy</span>
-    </span>
+  <a href="https://github.com/gncysy">
+    <img src="https://avatars.githubusercontent.com/u/199947456?v=4" width="48" height="48" style="border-radius: 50%; margin-right: 10px;" alt="gncysy">
   </a>
+  <a href="https://github.com/gncysy"><strong>gncysy</strong></a> · 项目创建者、核心开发者
 </div>
-<br clear="all"/>
+
+<br>
+
+> 📢 欢迎更多贡献者加入！你的名字会出现在这里。
 
 ## 🙏 致谢
 
-感谢以下开源项目的支持，墨阅得以站在巨人的肩膀上：
+感谢以下开源项目的支持：
 
-*   [Legado](https://github.com/gedoor/legado) - Android 开源阅读器，书源生态的核心
-*   [Reader](https://github.com/hectorqin/reader) - 阅读3服务器版，提供架构参考
-*   [Rhino](https://github.com/mozilla/rhino) - JavaScript 引擎，书源执行核心
-*   [Electron](https://www.electronjs.org/) - 跨平台桌面应用框架
-*   [Spring Boot](https://spring.io/projects/spring-boot) - Java 后端框架
-*   [Vue.js](https://vuejs.org/) - 前端框架
+- [Legado](https://github.com/gedoor/legado) - Android 开源阅读器
+- [Reader](https://github.com/hectorqin/reader) - 阅读3服务器版
+- [Rhino](https://github.com/mozilla/rhino) - JavaScript 引擎
+- [Electron](https://www.electronjs.org/)
+- [Spring Boot](https://spring.io/projects/spring-boot)
+- [Vue.js](https://vuejs.org/)
 
 ## 📄 许可证
 
 本项目基于 **GPL-3.0 License** 开源，与 Legado 保持一致。
 
-**© 2026 墨阅团队** · [查看许可证文件](https://github.com/gncysy/moyue-reader/blob/main/LICENSE)
+**© 2026 墨阅团队** · [查看许可证](https://github.com/gncysy/moyue-reader/blob/main/LICENSE)
 
-## 联系方式
+## 📬 联系方式
 
-- 问题反馈：https://github.com/gncysy/moyue-reader/issues
-- 项目主页：https://github.com/gncysy/moyue-reader
+- 问题反馈：[Issues](https://github.com/gncysy/moyue-reader/issues)
+- 项目主页：[https://github.com/gncysy/moyue-reader](https://github.com/gncysy/moyue-reader)
 
+---
+
+<div align="center">
+  <sub>✨ 如果这个项目对你有帮助，欢迎 Star ⭐️</sub>
+</div>
 ---
 
 <div align="center">
