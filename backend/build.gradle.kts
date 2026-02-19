@@ -39,8 +39,15 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // 缓存
+    implementation("com.github.ben-manes:caffeine:3.1.8")
+    
+    // 日志
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     
     // 工具
+    implementation("org.apache.commons:commons-lang3:3.14.0")
     implementation("commons-codec:commons-codec:1.16.0")
     
     testImplementation("org.springframework.boot:spring-boot-starter-test")
