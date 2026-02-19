@@ -26,7 +26,17 @@ class RhinoEngine(
         val result: Any?,
         val error: String? = null,
         val executionTime: Long = 0
-    )
+    ) {
+        // 添加 copy 方法（虽然 data class 自动有 copy，但显式定义更安全）
+        fun copy(
+            success: Boolean = this.success,
+            result: Any? = this.result,
+            error: String? = this.error,
+            executionTime: Long = this.executionTime
+        ): ExecuteResult {
+            return ExecuteResult(success, result, error, executionTime)
+        }
+    }
     
     fun execute(
         jsCode: String,
@@ -36,6 +46,8 @@ class RhinoEngine(
         chapter: BookChapter? = null,
         vararg args: Any
     ): ExecuteResult {
+        val startTime = System.currentTimeMillis()
+        
         val future = executor.submit<ExecuteResult> {
             val cx = Context.enter()
             try {
@@ -72,21 +84,37 @@ class RhinoEngine(
                 if (functionName != null) {
                     val func = scope.get(functionName, scope)
                     if (func is Function) {
+                        // 修复：将 args 转换为 JS 对象数组，并传入正确的 scope
                         val jsArgs = args.map { Context.javaToJS(it, scope) }.toTypedArray()
                         val result = func.call(cx, scope, scope, jsArgs)
                         ExecuteResult(
                             success = true,
-                            result = Context.jsToJava(result, Any::class.java)
+                            result = Context.jsToJava(result, Any::class.java),
+                            executionTime = System.currentTimeMillis() - startTime
                         )
                     } else {
-                        ExecuteResult(false, null, "函数不存在: $functionName")
+                        ExecuteResult(
+                            success = false, 
+                            result = null, 
+                            error = "函数不存在: $functionName",
+                            executionTime = System.currentTimeMillis() - startTime
+                        )
                     }
                 } else {
-                    ExecuteResult(true, "OK")
+                    ExecuteResult(
+                        success = true, 
+                        result = "OK",
+                        executionTime = System.currentTimeMillis() - startTime
+                    )
                 }
                 
             } catch (e: Exception) {
-                ExecuteResult(false, null, "${e::class.simpleName}: ${e.message}")
+                ExecuteResult(
+                    success = false, 
+                    result = null, 
+                    error = "${e::class.simpleName}: ${e.message}",
+                    executionTime = System.currentTimeMillis() - startTime
+                )
             } finally {
                 Context.exit()
                 jsExtensions.clearContext()
@@ -97,9 +125,19 @@ class RhinoEngine(
             future.get(30, TimeUnit.SECONDS)
         } catch (e: TimeoutException) {
             future.cancel(true)
-            ExecuteResult(false, null, "执行超时")
+            ExecuteResult(
+                success = false, 
+                result = null, 
+                error = "执行超时",
+                executionTime = System.currentTimeMillis() - startTime
+            )
         } catch (e: Exception) {
-            ExecuteResult(false, null, e.message)
+            ExecuteResult(
+                success = false, 
+                result = null, 
+                error = e.message,
+                executionTime = System.currentTimeMillis() - startTime
+            )
         }
     }
     
