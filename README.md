@@ -113,9 +113,9 @@ npm run electron:dev
 
 访问 Releases 页面下载对应平台的安装包：
 
-· Windows：.exe 安装包
-· macOS：.dmg 安装包
-· Linux：.AppImage 或 .deb 包
+- Windows：.exe 安装包
+- macOS：.dmg 安装包
+- Linux：.AppImage 或 .deb 包
 
 贡献指南
 
@@ -131,12 +131,12 @@ npm run electron:dev
 
 本项目基于以下开源项目：
 
-· Legado - Android 开源阅读器
-· Reader - 阅读3服务器版
-· Rhino - JavaScript 引擎
-· Electron
-· Spring Boot
-· Vue.js
+- Legado - Android 开源阅读器
+- Reader - 阅读3服务器版
+- Rhino - JavaScript 引擎
+- Electron
+- Spring Boot
+- Vue.js
 
 许可证
 
@@ -144,4 +144,4 @@ GPL-3.0 License © 2024 墨阅团队
 
 联系方式
 
-· 问题反馈：Issues
+- 问题反馈：Issues
