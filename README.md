@@ -13,9 +13,6 @@
       <img src="https://img.shields.io/github/issues/gncysy/moyue-reader" alt="Issues">
     </a>
   </p>
-  <p>
-    English | 简体中文
-  </p>
 </div>
 
 ## 项目简介
@@ -76,50 +73,33 @@
 
 ## 系统架构
 
-┌─────────────────────────────────────┐
-│         Electron 前端层              │
-│  ┌─────────┐ ┌─────────┐           │
-│  │  书架   │ │ 阅读器  │           │
-│  └─────────┘ └─────────┘           │
-├─────────────────────────────────────┤
-│         HTTP / WebSocket             │
-├─────────────────────────────────────┤
-│         Spring Boot 后端层           │
-│  ┌─────────┐ ┌─────────┐           │
-│  │ 书源引擎 │ │ 安全沙箱 │           │
-│  └─────────┘ └─────────┘           │
-├─────────────────────────────────────┤
-│         Rhino 1.7.15 引擎           │
-│  ┌─────────┐ ┌─────────┐           │
-│  │ Jsoup   │ │ OkHttp  │           │
-│  └─────────┘ └─────────┘           │
-└─────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Electron[Electron 前端层]
+        A[书架]
+        B[阅读器]
+    end
 
-## 技术栈
+    subgraph HTTP[HTTP / WebSocket]
+        C[通信层]
+    end
 
-### 后端
-- Kotlin 1.9 + Spring Boot 3.2
-- Rhino 1.7.15（书源引擎）
-- OkHttp + Jsoup
-- H2 / SQLite
+    subgraph Spring[Spring Boot 后端层]
+        D[书源引擎]
+        E[安全沙箱]
+    end
 
-### 前端
-- Electron 28 + Vue 3.4
-- TypeScript 5.3
-- Element Plus
-- Pinia + Vue Router
+    subgraph Rhino[Rhino 引擎]
+        F[Jsoup]
+        G[OkHttp]
+    end
 
-## 快速开始
-
-### 环境要求
-- JDK 17 (Eclipse Temurin)
-- Node.js 18+
-- Git
-
-### 克隆项目
-```bash
-git clone https://github.com/gncysy/moyue-reader.git
-cd moyue-reader
+    A --> C
+    B --> C
+    C --> D
+    C --> E
+    D --> F
+    D --> G
 ```
 
 ### 启动后端
@@ -168,7 +148,7 @@ npm run electron:dev
 ## 贡献者
 
 <a href="https://github.com/gncysy">
-  <img src="https://avatars.githubusercontent.com/u/你的ID?v=4" width="50" height="50" style="border-radius:50%" alt="gncysy"/>
+  <img src="https://avatars.githubusercontent.com/u/gncysy?v=4" width="50" height="50" style="border-radius:50%" alt="gncysy"/>
 </a>
 
 ## 许可证
@@ -178,157 +158,3 @@ GPL-3.0 License © 2024 墨阅团队
 ## 联系方式
 
 - 问题反馈：https://github.com/gncysy/moyue-reader/issues
-
-✅ 完整英文版（与中文版完全对应）
-
-## English
-
-<div align="center">
-  <p><strong>A cross-platform desktop reader that brings the Legado book source ecosystem to your desktop</strong></p>
-</div>
-
-### Introduction
-
-Moyue is a cross-platform desktop reader that reimagines the core functionality of the Android open-source reader Legado for desktop environments. It features a frontend-backend separation architecture, with a backend built on Spring Boot + Kotlin and a frontend powered by Electron + Vue 3.
-
-The goal is to deliver a refined desktop reading experience while maintaining full compatibility with the Legado book source ecosystem.
-
-### Screenshots
-
-> Screenshots coming soon
-
-| Bookshelf | Reader | Book Sources |
-|-----------|--------|--------------|
-| ![Bookshelf](https://via.placeholder.com/300x200?text=Bookshelf+Preview) | ![Reader](https://via.placeholder.com/300x200?text=Reader+Preview) | ![Book Sources](https://via.placeholder.com/300x200?text=Sources+Preview) |
-
-### Features
-
-#### 📚 Bookshelf Management
-- Add, delete, and modify books
-- Reading progress tracking
-- Cover caching
-- Custom grouping
-
-#### 🔍 Book Source System
-- Import/export Legado format book sources (JSON)
-- Enable/disable book sources
-- Book source testing
-- Compatibility analysis
-
-#### 📖 Reader
-- Four page-turning modes: cover, simulation, slide, scroll
-- Typography settings: font, size, line spacing
-- Theme switching: day, night, eye-protection
-- Table of contents navigation
-- Bookmarks
-
-#### 🛡️ Security Sandbox
-| Mode | Compatibility | Restrictions |
-| --- | --- | --- |
-| Standard | ~85% | No file/Socket/reflection |
-| Compatible | ~95% | File/Socket allowed, no reflection |
-| Trusted | ~98% | Timeout protection only, manual confirmation required |
-
-#### 🔊 TTS Reading
-- System TTS (Windows SAPI5 / macOS AVSpeech)
-- Speed adjustment
-- Background playback
-
-#### 🔄 WebDAV Sync
-- Bookshelf backup and restore
-- Reading progress sync
-- Manual/auto sync modes
-
-#### 📄 Local Books
-- TXT: automatic chapter detection
-- EPUB: parse table of contents, cover, content
-
-### System Architecture
-
-┌─────────────────────────────────────┐
-│         Electron Frontend            │
-│  ┌─────────┐ ┌─────────┐           │
-│  │ Bookshelf│ │ Reader  │           │
-│  └─────────┘ └─────────┘           │
-├─────────────────────────────────────┤
-│         HTTP / WebSocket             │
-├─────────────────────────────────────┤
-│         Spring Boot Backend          │
-│  ┌─────────┐ ┌─────────┐           │
-│  │Source   │ │Security │           │
-│  │Engine   │ │Sandbox  │           │
-│  └─────────┘ └─────────┘           │
-├─────────────────────────────────────┤
-│         Rhino 1.7.15 Engine         │
-│  ┌─────────┐ ┌─────────┐           │
-│  │ Jsoup   │ │ OkHttp  │           │
-│  └─────────┘ └─────────┘           │
-└─────────────────────────────────────┘
-
-### Tech Stack
-
-#### Backend
-- Kotlin 1.9 + Spring Boot 3.2
-- Rhino 1.7.15 (book source engine)
-- OkHttp + Jsoup
-- H2 / SQLite
-
-#### Frontend
-- Electron 28 + Vue 3.4
-- TypeScript 5.3
-- Element Plus
-- Pinia + Vue Router
-
-### Quick Start
-
-#### Requirements
-- JDK 17 (Eclipse Temurin)
-- Node.js 18+
-- Git
-
-#### Clone
-```bash
-git clone https://github.com/gncysy/moyue-reader.git
-cd moyue-reader
-```
-
-#### Start Backend
-```bash
-cd backend
-./gradlew bootRun
-```
-
-#### Start Frontend
-Open a new terminal window:
-```bash
-cd frontend
-npm install
-npm run electron:dev
-```
-
-### Download
-
-Visit the Releases page to download platform-specific packages:
-
-- Windows: .exe
-- macOS: .dmg
-- Linux: .AppImage / .deb
-
-### Acknowledgements
-
-Thanks to the following open-source projects:
-
-- Legado - Android open-source reader, the core of the book source ecosystem
-- Reader - Reader 3 server edition
-- Rhino - JavaScript engine
-- Electron - Cross-platform desktop framework
-- Spring Boot - Java backend framework
-- Vue.js - Frontend framework
-
-### License
-
-GPL-3.0 License © 2024 Moyue Team
-
-### Contact
-
-- Issues: https://github.com/gncysy/moyue-reader/issues
