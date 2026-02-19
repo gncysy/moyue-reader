@@ -9,7 +9,6 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.io.File
 
 @Service
 class SourceService(
@@ -19,24 +18,36 @@ class SourceService(
     private val gson: Gson
 ) {
     
-    /**
-     * 搜索书籍（多书源并发）
-     */
-    fun searchBook(keyword: String, sourceIds: List<String>? = null): List<SearchResult> {
+    data class SearchResult(
+        val book: Book,
+        val source: BookSource
+    )
+    
+    fun search(keyword: String, sourceIds: List<String>? = null): List<SearchResult> {
         val sources = if (sourceIds != null) {
             bookSourceRepository.findAllById(sourceIds).filter { it.enabled }
         } else {
             bookSourceRepository.findByEnabledTrue()
         }
         
-        // 并发搜索，最多同时 5 个
-        val results = sources.parallelStream()
+        return sources.parallelStream()
             .limit(5)
             .map { source ->
                 try {
-                    val engineResult = rhinoEngine.executeSearch(source, keyword)
-                    if (engineResult.success) {
-                        parseBooks(engineResult.result, source)
+                    val jsCode = buildString {
+                        appendLine(source.headerJs ?: "")
+                        appendLine("var keyword = \"${escapeJsString(keyword)}\";")
+                        appendLine("var result = ${source.ruleSearch ?: "null"};")
+                        appendLine("JSON.stringify(result);")
+                    }
+                    
+                    val result = rhinoEngine.execute(
+                        jsCode = jsCode,
+                        source = source
+                    )
+                    
+                    if (result.success && result.result != null) {
+                        parseBooks(result.result, source)
                     } else {
                         emptyList()
                     }
@@ -46,125 +57,198 @@ class SourceService(
             }
             .flatMap { it.stream() }
             .toList()
-        
-        return results.map { SearchResult(it, it.source) }
+            .map { SearchResult(it, it.source ?: BookSource()) }
     }
     
-    /**
-     * 获取书籍详情
-     */
     fun getBookInfo(bookUrl: String, sourceId: String): Book? {
         val source = bookSourceRepository.findById(sourceId).orElse(null) ?: return null
         
-        val book = Book(bookUrl = bookUrl, origin = sourceId)
-        val result = rhinoEngine.executeBookInfo(source, book)
+        val cacheKey = "book:$sourceId:$bookUrl"
+        cacheService.get(cacheKey)?.let {
+            return it as Book
+        }
         
-        return if (result.success) {
-            updateBookFromResult(book, result.result)
+        val jsCode = buildString {
+            appendLine(source.headerJs ?: "")
+            appendLine("var bookUrl = \"${escapeJsString(bookUrl)}\";")
+            appendLine("var result = ${source.ruleBookInfo ?: "null"};")
+            appendLine("JSON.stringify(result);")
+        }
+        
+        val result = rhinoEngine.execute(
+            jsCode = jsCode,
+            source = source
+        )
+        
+        return if (result.success && result.result != null) {
+            val book = parseBook(result.result, source)
+            cacheService.put(cacheKey, book, 3600)
             book
         } else null
     }
     
-    /**
-     * 获取目录
-     */
     fun getChapterList(bookUrl: String, sourceId: String): List<BookChapter> {
         val source = bookSourceRepository.findById(sourceId).orElse(null) ?: return emptyList()
         
-        // 检查缓存
         val cacheKey = "toc:$sourceId:$bookUrl"
         cacheService.get(cacheKey)?.let {
             return it as List<BookChapter>
         }
         
-        val book = Book(bookUrl = bookUrl, origin = sourceId)
-        val result = rhinoEngine.executeToc(source, book)
+        val jsCode = buildString {
+            appendLine(source.headerJs ?: "")
+            appendLine("var bookUrl = \"${escapeJsString(bookUrl)}\";")
+            appendLine("var result = ${source.ruleToc ?: "null"};")
+            appendLine("JSON.stringify(result);")
+        }
         
-        return if (result.success) {
+        val result = rhinoEngine.execute(
+            jsCode = jsCode,
+            source = source
+        )
+        
+        return if (result.success && result.result != null) {
             val chapters = parseChapters(result.result, bookUrl)
-            cacheService.put(cacheKey, chapters, 3600) // 缓存1小时
+            cacheService.put(cacheKey, chapters, 3600)
             chapters
         } else emptyList()
     }
     
-    /**
-     * 获取正文
-     */
     fun getChapterContent(chapterUrl: String, bookUrl: String, sourceId: String): String {
         val source = bookSourceRepository.findById(sourceId).orElse(null) ?: return ""
         
-        // 检查缓存
         val cacheKey = "content:$sourceId:$chapterUrl"
         cacheService.get(cacheKey)?.let {
             return it as String
         }
         
-        val book = Book(bookUrl = bookUrl, origin = sourceId)
-        val chapter = BookChapter(url = chapterUrl, bookUrl = bookUrl)
-        val result = rhinoEngine.executeContent(source, book, chapter)
+        val jsCode = buildString {
+            appendLine(source.headerJs ?: "")
+            appendLine("var chapterUrl = \"${escapeJsString(chapterUrl)}\";")
+            appendLine("var result = ${source.ruleContent ?: "null"};")
+            appendLine("JSON.stringify(result);")
+        }
         
-        return if (result.success) {
+        val result = rhinoEngine.execute(
+            jsCode = jsCode,
+            source = source
+        )
+        
+        return if (result.success && result.result != null) {
             val content = parseContent(result.result)
-            cacheService.put(cacheKey, content, 86400) // 缓存24小时
+            cacheService.put(cacheKey, content, 86400)
             content
         } else ""
     }
     
-    /**
-     * 导入书源
-     */
     @Transactional
-    fun importSource(json: String): List<BookSource> {
+    fun importSources(json: String): List<BookSource> {
         val type = object : TypeToken<List<BookSource>>() {}.type
         val sources = gson.fromJson<List<BookSource>>(json, type)
         
-        // 验证并保存
         return sources.map { source ->
             source.enabled = true
             bookSourceRepository.save(source)
         }
     }
     
-    /**
-     * 导出书源
-     */
-    fun exportSource(sourceIds: List<String>): String {
+    fun exportSources(sourceIds: List<String>): String {
         val sources = bookSourceRepository.findAllById(sourceIds)
         return gson.toJson(sources)
     }
     
-    /**
-     * 测试书源
-     */
     fun testSource(sourceId: String): Map<String, Any> {
         val source = bookSourceRepository.findById(sourceId).orElse(null) 
             ?: return mapOf("error" to "书源不存在")
         
-        return rhinoEngine.testSource(source)
+        val results = mutableMapOf<String, Any>()
+        
+        // 测试搜索
+        val searchResult = rhinoEngine.execute(
+            jsCode = "var keyword='测试'; var result=search?search:null; JSON.stringify(result);",
+            source = source
+        )
+        results["search"] = mapOf(
+            "success" to searchResult.success,
+            "time" to searchResult.executionTime,
+            "error" to (searchResult.error ?: "")
+        )
+        
+        return results
     }
     
-    // 辅助方法
     private fun parseBooks(result: Any?, source: BookSource): List<Book> {
-        // 实现解析逻辑
-        return emptyList()
+        return when (result) {
+            is List<*> -> result.mapNotNull { item ->
+                when (item) {
+                    is Map<*, *> -> {
+                        Book(
+                            name = item["name"] as? String ?: "",
+                            author = item["author"] as? String ?: "",
+                            bookUrl = item["bookUrl"] as? String ?: "",
+                            coverUrl = item["coverUrl"] as? String,
+                            intro = item["intro"] as? String,
+                            origin = source.id
+                        ).apply { this.source = source }
+                    }
+                    else -> null
+                }
+            }
+            is Map<*, *> -> listOf(Book(
+                name = result["name"] as? String ?: "",
+                author = result["author"] as? String ?: "",
+                bookUrl = result["bookUrl"] as? String ?: "",
+                coverUrl = result["coverUrl"] as? String,
+                intro = result["intro"] as? String,
+                origin = source.id
+            ).apply { this.source = source })
+            else -> emptyList()
+        }
+    }
+    
+    private fun parseBook(result: Any?, source: BookSource): Book {
+        return when (result) {
+            is Map<*, *> -> Book(
+                name = result["name"] as? String ?: "",
+                author = result["author"] as? String ?: "",
+                bookUrl = result["bookUrl"] as? String ?: "",
+                coverUrl = result["coverUrl"] as? String,
+                intro = result["intro"] as? String,
+                origin = source.id
+            ).apply { this.source = source }
+            else -> Book()
+        }
     }
     
     private fun parseChapters(result: Any?, bookUrl: String): List<BookChapter> {
-        // 实现解析逻辑
-        return emptyList()
+        return when (result) {
+            is List<*> -> result.mapIndexedNotNull { index, item ->
+                when (item) {
+                    is Map<*, *> -> BookChapter(
+                        title = item["title"] as? String ?: "第${index + 1}章",
+                        url = item["url"] as? String ?: "",
+                        bookUrl = bookUrl,
+                        index = index
+                    )
+                    else -> null
+                }
+            }
+            else -> emptyList()
+        }
     }
     
     private fun parseContent(result: Any?): String {
         return when (result) {
             is String -> result
-            is List<*> -> result.joinToString("\n")
+            is List<*> -> result.joinToString("\n") { it?.toString() ?: "" }
             else -> result?.toString() ?: ""
         }
     }
     
-    private fun updateBookFromResult(book: Book, result: Any?) {
-        // 更新书籍信息
+    private fun escapeJsString(str: String): String {
+        return str.replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
     }
-    
-    data class SearchResult(val book: Book, val source: BookSource)
 }
