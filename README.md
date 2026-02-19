@@ -179,28 +179,33 @@ npm run electron:dev
 
 ## 贡献者
 
-<a href="https://github.com/gncysy">
-  <img src="https://avatars.githubusercontent.com/u/199947456?v=4" width="60" height="60" style="border-radius:50%; margin-right:10px;" align="left" alt="gncysy">
-</a>
-**gncysy** · 项目创建者、核心开发者  
-GitHub: https://github.com/gncysy
-
+<div align="left">
+  <a href="https://github.com/gncysy" style="display: inline-block; text-decoration: none; color: inherit;">
+    <img src="https://avatars.githubusercontent.com/u/199947456?v=4" width="50" height="50" style="border-radius: 50%; vertical-align: middle; margin-right: 15px;" alt="gncysy">
+    <span style="vertical-align: middle;">
+      <strong>gncysy</strong> · 项目创建者、核心开发者<br>
+      <span style="font-size: 0.9em; color: #0366d6;">github.com/gncysy</span>
+    </span>
+  </a>
+</div>
 <br clear="all"/>
 
-## 致谢
+## 🙏 致谢
 
-感谢以下开源项目的支持：
+感谢以下开源项目的支持，墨阅得以站在巨人的肩膀上：
 
-· Legado - Android 开源阅读器
-· Reader - 阅读3服务器版
-· Rhino - JavaScript 引擎
-· Electron
-· Spring Boot
-· Vue.js
+*   [Legado](https://github.com/gedoor/legado) - Android 开源阅读器，书源生态的核心
+*   [Reader](https://github.com/hectorqin/reader) - 阅读3服务器版，提供架构参考
+*   [Rhino](https://github.com/mozilla/rhino) - JavaScript 引擎，书源执行核心
+*   [Electron](https://www.electronjs.org/) - 跨平台桌面应用框架
+*   [Spring Boot](https://spring.io/projects/spring-boot) - Java 后端框架
+*   [Vue.js](https://vuejs.org/) - 前端框架
 
-## 许可证
+## 📄 许可证
 
-GPL-3.0 License © 2026 墨阅团队
+本项目基于 **GPL-3.0 License** 开源，与 Legado 保持一致。
+
+**© 2026 墨阅团队** · [查看许可证文件](https://github.com/gncysy/moyue-reader/blob/main/LICENSE)
 
 ## 联系方式
 
