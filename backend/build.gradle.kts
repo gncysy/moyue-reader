@@ -96,3 +96,57 @@ tasks.register<Zip>("jlinkZip") {
     archiveFileName.set("moyue-jre-${version}.zip")
     destinationDirectory.set(file("$buildDir/dist"))
 }
+// ==================== CDS 自动生成 ====================
+
+tasks.register<Copy>("unpackJar") {
+    dependsOn("bootJar")
+    group = "build"
+    description = "解压 JAR 包用于生成 CDS"
+    
+    val jarFile = tasks.bootJar.get().archiveFile.get().asFile
+    val unpackDir = file("$buildDir/unpacked")
+    
+    from(zipTree(jarFile))
+    into(unpackDir)
+    
+    doLast {
+        println("✅ JAR 包解压完成")
+    }
+}
+
+tasks.register("generateCds") {
+    dependsOn("unpackJar")
+    group = "build"
+    description = "生成 CDS 缓存文件"
+    
+    doLast {
+        val unpackDir = file("$buildDir/unpacked")
+        val cdsFile = file("$buildDir/libs/classes.jsa")
+        
+        exec {
+            workingDir = unpackDir
+            commandLine = listOf(
+                "java",
+                "-Xshare:dump",
+                "-XX:SharedArchiveFile=${cdsFile.absolutePath}",
+                "-cp", "."
+            )
+        }
+        println("✅ CDS 缓存生成完成")
+    }
+}
+
+tasks.bootJar {
+    dependsOn("generateCds")
+    doLast {
+        val cdsFile = file("$buildDir/libs/classes.jsa")
+        val targetDir = file("src/main/resources")
+        if (cdsFile.exists()) {
+            copy {
+                from(cdsFile)
+                into(targetDir)
+            }
+            println("✅ CDS 文件已复制到 resources")
+        }
+    }
+}
