@@ -37,14 +37,12 @@ dependencies {
     // 书源引擎
     implementation("org.mozilla:rhino:1.7.15")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("com.google.code.gson:gson:2.10.1")
-
-    // 缓存
-    implementation("com.github.ben-manes:caffeine:3.1.8")
     
-    // 日志
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    // ✅ 缓存（新增）
+    implementation("com.github.ben-manes:caffeine:caffeine:3.1.8")
     
     // 工具
     implementation("org.apache.commons:commons-lang3:3.14.0")
@@ -95,62 +93,4 @@ tasks.register<Zip>("jlinkZip") {
     }
     archiveFileName.set("moyue-jre-${version}.zip")
     destinationDirectory.set(file("$buildDir/dist"))
-}
-// ==================== CDS 自动生成 ====================
-
-tasks.register<Copy>("unpackJar") {
-    dependsOn("bootJar")
-    group = "build"
-    description = "解压 JAR 包用于生成 CDS"
-    
-    val jarFile = tasks.bootJar.get().archiveFile.get().asFile
-    val unpackDir = file("$buildDir/unpacked")
-    
-    from(zipTree(jarFile))
-    into(unpackDir)
-    
-    doLast {
-        println("✅ JAR 包解压完成")
-    }
-}
-
-tasks.register("generateCds") {
-    dependsOn("unpackJar")
-    group = "build"
-    description = "生成 CDS 缓存文件"
-    
-    doLast {
-        val unpackDir = file("$buildDir/unpacked")
-        val cdsFile = file("$buildDir/libs/classes.jsa")
-        // 指定类列表文件路径
-        val classListFile = file("${projectDir}/src/main/resources/cds/classes.lst")
-        
-        exec {
-            workingDir = unpackDir
-            commandLine = listOf(
-                "java",
-                "-Xshare:dump",
-                // 告诉 CDS 要缓存哪些类
-                "-XX:SharedClassListFile=${classListFile.absolutePath}",
-                "-XX:SharedArchiveFile=${cdsFile.absolutePath}",
-                "-cp", "."
-            )
-        }
-        println("✅ CDS 缓存生成完成")
-    }
-}
-
-tasks.bootJar {
-    dependsOn("generateCds")
-    doLast {
-        val cdsFile = file("$buildDir/libs/classes.jsa")
-        val targetDir = file("src/main/resources")
-        if (cdsFile.exists()) {
-            copy {
-                from(cdsFile)
-                into(targetDir)
-            }
-            println("✅ CDS 文件已复制到 resources")
-        }
-    }
 }
