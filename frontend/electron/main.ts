@@ -1,16 +1,18 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, Menu, shell, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'  // 修复：添加 ipcMain
 import path from 'path'
 import { spawn } from 'child_process'
-import fs from 'fs'
-import http from 'http'
 
 let mainWindow: BrowserWindow | null = null
 let javaProcess: any = null
-let isQuitting = false
+
+// 声明 app.isQuitting
+declare module 'electron' {
+  interface App {
+    isQuitting?: boolean
+  }
+}
 
 function createWindow() {
-  const isDev = process.env.NODE_ENV === 'development'
-  
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -18,141 +20,102 @@ function createWindow() {
     minHeight: 600,
     frame: false,
     titleBarStyle: 'hidden',
+    show: false,  // 先不显示，等 ready-to-show
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
-      devTools: isDev
+      preload: path.join(__dirname, 'preload.js')
     },
     icon: path.join(__dirname, '../build/icon.ico')
   })
 
-  mainWindow.removeMenu()
-
-  // ✅ 生产环境禁用开发者工具
-  if (!isDev) {
-    mainWindow.webContents.on('devtools-opened', () => {
-      mainWindow?.webContents.closeDevTools()
-    })
-    
-    mainWindow.webContents.on('before-input-event', (event, input) => {
-      if (input.key === 'F12' || 
-          (input.control && input.shift && input.key === 'I') ||
-          (input.meta && input.alt && input.key === 'I')) {
-        event.preventDefault()
-      }
-    })
-  }
-
-  // 自定义右键菜单
-  mainWindow.webContents.on('context-menu', (event, params) => {
-    event.preventDefault()
-    
-    const menuTemplate: any[] = []
-    
-    if (params.selectionText && params.selectionText.trim().length > 0) {
-      menuTemplate.push(
-        {
-          label: '📋 复制',
-          accelerator: 'Ctrl+C',
-          click: () => {
-            mainWindow?.webContents.copy()
-          }
-        },
-        { type: 'separator' }
-      )
-    }
-    
-    if (menuTemplate.length > 0) {
-      const menu = Menu.buildFromTemplate(menuTemplate)
-      menu.popup({
-        window: mainWindow!,
-        x: params.x,
-        y: params.y
-      })
-    }
+  // 修复：窗口事件监听移到 createWindow 内部
+  mainWindow.on('maximize', () => {
+    mainWindow?.webContents.send('window-maximized-changed', true)
   })
 
-  if (isDev) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173')
-    mainWindow.webContents.openDevTools()
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
-  }
+  mainWindow.on('unmaximize', () => {
+    mainWindow?.webContents.send('window-maximized-changed', false)
+  })
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
+    mainWindow?.focus()
   })
 
   mainWindow.on('closed', () => {
-    if (!isQuitting) {
-      app.quit()
-    }
+    mainWindow = null
   })
+
+  // 加载页面
+  if (process.env.VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+  }
 }
 
-// ✅ 启动 Java 后端（无窗口版）
+// 启动 Java 后端（无黑框版本）
 function startJavaBackend() {
   const isDev = process.env.NODE_ENV === 'development'
-  
-  let javaPath = 'java'
-  let jarPath = ''
-  
+  const jarPath = isDev
+    ? path.join(__dirname, '../../backend/build/libs/moyue-backend.jar')
+    : path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'moyue-backend.jar')
+
+  // JVM 参数（包含 CDS 加速）
+  const jvmArgs = [
+    '-Xshare:on',                    // 启用 CDS
+    '-server',
+    '-Xms128m',
+    '-Xmx512m',
+    '-XX:+UseG1GC',
+    '-XX:+UseStringDeduplication',
+    '-XX:MaxGCPauseMillis=100',
+    '-Djava.awt.headless=true',
+    '-jar', jarPath
+  ]
+
   if (!isDev) {
-    // 生产环境：使用 javaw.exe 无窗口
-    const jrePath = path.join(process.resourcesPath, 'jre', 'bin', 'javaw.exe')
-    if (fs.existsSync(jrePath)) {
-      javaPath = jrePath
-    } else {
-      javaPath = path.join(process.resourcesPath, 'jre', 'bin', 'java.exe')
-    }
-    jarPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'moyue-backend.jar')
-    
-    console.log('启动后端服务（无窗口模式）')
-    
-    javaProcess = spawn(javaPath, ['-jar', jarPath, '--server.port=0'], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true
-    })
-    
-    javaProcess.unref()
-    
-  } else {
-    // 开发环境：正常显示
-    jarPath = path.join(__dirname, '../../backend/build/libs/moyue-backend.jar')
-    console.log('启动后端（开发模式）:', jarPath)
-    
-    javaProcess = spawn(javaPath, ['-jar', jarPath, '--server.port=0'], {
-      stdio: 'pipe'
-    })
-    
+    jvmArgs.push('-noverify')
+    jvmArgs.push('-XX:TieredStopAtLevel=1')
+  }
+
+  // 无黑框启动配置
+  const spawnOptions: any = {
+    stdio: 'pipe',
+    detached: false,
+    windowsHide: true  // Windows 关键：隐藏控制台
+  }
+
+  if (process.platform === 'win32') {
+    spawnOptions.windowsHide = true
+    spawnOptions.shell = false
+  }
+
+  javaProcess = spawn('java', jvmArgs, spawnOptions)
+
+  if (isDev) {
     javaProcess.stdout?.on('data', (data: Buffer) => {
       console.log(`[Java] ${data.toString().trim()}`)
     })
-    
     javaProcess.stderr?.on('data', (data: Buffer) => {
       console.error(`[Java Error] ${data.toString().trim()}`)
     })
   }
 
-  javaProcess.on('error', (err) => {
-    console.error('启动 Java 失败:', err)
-    if (!isDev) {
-      dialog.showErrorBox('启动失败', '无法启动后端服务：' + err.message)
-    }
-  })
-
   javaProcess.on('exit', (code: number) => {
     console.log(`Java 进程退出，代码: ${code}`)
-    if (!isQuitting && code !== 0) {
-      console.log('Java 进程异常退出，3秒后重启...')
+    if (!app.isQuitting) {
       setTimeout(startJavaBackend, 3000)
     }
   })
+
+  javaProcess.on('error', (err: Error) => {
+    console.error('Java 进程启动失败:', err)
+  })
 }
 
-// IPC 处理
+// IPC 处理（移到外部）
 ipcMain.on('window-minimize', () => {
   mainWindow?.minimize()
 })
@@ -163,45 +126,34 @@ ipcMain.handle('window-maximize', () => {
   } else {
     mainWindow?.maximize()
   }
-  return { isMaximized: mainWindow?.isMaximized() }
+  return { isMaximized: mainWindow?.isMaximized() ?? false }
 })
 
 ipcMain.on('window-close', () => {
   mainWindow?.close()
 })
 
-ipcMain.handle('get-app-path', () => {
-  return app.getPath('userData')
-})
-
-ipcMain.handle('open-external', (event, url) => {
-  shell.openExternal(url)
-})
-
-ipcMain.handle('open-path', (event, path) => {
-  shell.openPath(path)
-})
-
+// 应用生命周期
 app.whenReady().then(() => {
   startJavaBackend()
-  createWindow()
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
-    }
-  })
-})
-
-app.on('before-quit', () => {
-  isQuitting = true
-  if (javaProcess && !javaProcess.killed) {
-    javaProcess.kill()
-  }
+  setTimeout(createWindow, 1000)
 })
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+app.on('before-quit', () => {
+  app.isQuitting = true
+  if (javaProcess && !javaProcess.killed) {
+    javaProcess.kill()
+  }
+})
+
+app.on('activate', () => {
+  if (mainWindow === null) {
+    createWindow()
   }
 })
