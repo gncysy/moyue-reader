@@ -122,12 +122,16 @@ tasks.register("generateCds") {
     doLast {
         val unpackDir = file("$buildDir/unpacked")
         val cdsFile = file("$buildDir/libs/classes.jsa")
+        // 指定类列表文件路径
+        val classListFile = file("${projectDir}/src/main/resources/cds/classes.lst")
         
         exec {
             workingDir = unpackDir
             commandLine = listOf(
                 "java",
                 "-Xshare:dump",
+                // 告诉 CDS 要缓存哪些类
+                "-XX:SharedClassListFile=${classListFile.absolutePath}",
                 "-XX:SharedArchiveFile=${cdsFile.absolutePath}",
                 "-cp", "."
             )
