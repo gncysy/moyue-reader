@@ -17,13 +17,16 @@ spring:
     console:
       enabled: true
       path: /h2-console
+
 server:
-  port: 8080
+  port: ${PORT:0}  # 改成0！随机端口
   address: 127.0.0.1
+
 logging:
   level:
     com.moyue: DEBUG
     org.springframework: WARN
+
 moyue:
   security:
     default-level: standard
