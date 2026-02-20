@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, globalShortcut, Menu, shell, dialog } from 'electron'
 import path from 'path'
 import { spawn } from 'child_process'
 import fs from 'fs'
+import http from 'http'
 
 let mainWindow: BrowserWindow | null = null
 let javaProcess: any = null
@@ -21,56 +22,30 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      // 禁用开发者工具
       devTools: isDev
     },
     icon: path.join(__dirname, '../build/icon.ico')
   })
 
-  // 移除系统菜单栏（彻底干掉）
   mainWindow.removeMenu()
 
   // ==================== 禁用所有开发者功能 ====================
 
-  // 1. 监听并强制关闭任何打开的开发者工具
   if (!isDev) {
     mainWindow.webContents.on('devtools-opened', () => {
       mainWindow?.webContents.closeDevTools()
     })
   }
 
-  // 2. 阻止所有快捷键（包括F12、Ctrl+Shift+I、F5等）
   mainWindow.webContents.on('before-input-event', (event, input) => {
-    // F12
-    if (input.key === 'F12') {
-      event.preventDefault()
-    }
-    // Ctrl+Shift+I (Windows/Linux)
-    if (input.control && input.shift && input.key === 'I') {
-      event.preventDefault()
-    }
-    // Cmd+Option+I (Mac)
-    if (input.meta && input.alt && input.key === 'I') {
-      event.preventDefault()
-    }
-    // F5 刷新
-    if (input.key === 'F5') {
-      event.preventDefault()
-    }
-    // Ctrl+R 刷新
-    if (input.control && input.key === 'r') {
-      event.preventDefault()
-    }
-    // Cmd+R 刷新 (Mac)
-    if (input.meta && input.key === 'r') {
-      event.preventDefault()
-    }
-    // Ctrl+Shift+J (打开控制台)
-    if (input.control && input.shift && input.key === 'J') {
-      event.preventDefault()
-    }
-    // Ctrl+U (查看源代码)
-    if (input.control && input.key === 'u') {
+    if (input.key === 'F12' || 
+        (input.control && input.shift && input.key === 'I') ||
+        (input.meta && input.alt && input.key === 'I') ||
+        input.key === 'F5' ||
+        (input.control && input.key === 'r') ||
+        (input.meta && input.key === 'r') ||
+        (input.control && input.shift && input.key === 'J') ||
+        (input.control && input.key === 'u')) {
       event.preventDefault()
     }
   })
@@ -82,7 +57,6 @@ function createWindow() {
     
     const menuTemplate: any[] = []
     
-    // 1. 如果有选中文字，显示复制相关选项
     if (params.selectionText && params.selectionText.trim().length > 0) {
       menuTemplate.push(
         {
@@ -96,14 +70,13 @@ function createWindow() {
           label: `🔍 搜索 "${params.selectionText.substring(0, 20)}${params.selectionText.length > 20 ? '...' : ''}"`,
           click: () => {
             const text = encodeURIComponent(params.selectionText)
-            mainWindow?.webContents.loadURL(`https://www.baidu.com/s?wd=${text}`)
+            shell.openExternal(`https://www.baidu.com/s?wd=${text}`)
           }
         },
         { type: 'separator' }
       )
     }
     
-    // 2. 如果点击的是图片，显示图片相关选项
     if (params.mediaType === 'image') {
       menuTemplate.push(
         {
@@ -115,33 +88,31 @@ function createWindow() {
         {
           label: '🖼️ 在新窗口打开图片',
           click: () => {
-            require('electron').shell.openExternal(params.srcURL)
+            shell.openExternal(params.srcURL)
           }
         },
         { type: 'separator' }
       )
     }
     
-    // 3. 如果点击的是链接，显示链接相关选项
     if (params.linkURL && params.linkURL.trim().length > 0) {
       menuTemplate.push(
         {
           label: '🔗 复制链接地址',
           click: () => {
-            mainWindow?.webContents.copy()
+            shell.clipboard.writeText(params.linkURL)
           }
         },
         {
           label: '🔗 在新窗口打开链接',
           click: () => {
-            require('electron').shell.openExternal(params.linkURL)
+            shell.openExternal(params.linkURL)
           }
         },
         { type: 'separator' }
       )
     }
     
-    // 4. 常用功能
     menuTemplate.push(
       {
         label: '🔄 刷新',
@@ -164,7 +135,6 @@ function createWindow() {
       }
     )
     
-    // 如果菜单不为空，显示它
     if (menuTemplate.length > 0) {
       const menu = Menu.buildFromTemplate(menuTemplate)
       menu.popup({
@@ -178,7 +148,6 @@ function createWindow() {
   // 加载界面
   if (isDev) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173')
-    // 开发环境自动打开开发者工具
     mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
@@ -195,7 +164,7 @@ function createWindow() {
   })
 }
 
-// ==================== 启动 Java 后端 ====================
+// ==================== 启动 Java 后端（无窗口版）====================
 
 function startJavaBackend() {
   const isDev = process.env.NODE_ENV === 'development'
@@ -204,47 +173,80 @@ function startJavaBackend() {
   let jarPath = ''
   
   if (!isDev) {
-    // 生产环境：使用打包的 JRE
-    const jrePath = path.join(process.resourcesPath, 'jre', 'bin', 'java.exe')
+    // 生产环境：使用打包的 JRE，并用 javaw.exe 隐藏窗口
+    const jrePath = path.join(process.resourcesPath, 'jre', 'bin', 'javaw.exe')
     if (fs.existsSync(jrePath)) {
       javaPath = jrePath
+    } else {
+      // 备用：用 java.exe 但隐藏窗口
+      javaPath = path.join(process.resourcesPath, 'jre', 'bin', 'java.exe')
     }
     jarPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'moyue-backend.jar')
-  } else {
-    // 开发环境：使用系统 Java
-    jarPath = path.join(__dirname, '../../backend/build/libs/moyue-backend.jar')
-  }
-
-  console.log('启动 Java 后端:', javaPath, jarPath)
-
-  // 使用随机端口（0 让 Spring Boot 随机选择）
-  javaProcess = spawn(javaPath, ['-jar', jarPath, '--server.port=0'], {
-    stdio: 'pipe',
-    detached: false
-  })
-
-  // 从日志中捕获实际端口
-  javaProcess.stdout?.on('data', (data: Buffer) => {
-    const output = data.toString()
-    console.log(`[Java] ${output.trim()}`)
     
-    // 匹配 Spring Boot 实际端口
-    const match = output.match(/Tomcat started on port\(s\): (\d+)/)
-    if (match && mainWindow) {
-      const port = match[1]
-      console.log(`✅ 后端实际端口: ${port}`)
+    console.log('启动后端服务（无窗口模式）')
+    
+    // 使用 detached + stdio ignore + windowsHide 彻底隐藏窗口
+    javaProcess = spawn(javaPath, ['-Xshare:auto', '-jar', jarPath, '--server.port=0'], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    })
+    
+    // 允许父进程独立退出
+    javaProcess.unref()
+    
+    // 等待后端启动（简单轮询）
+    let retries = 0
+    const checkBackend = setInterval(() => {
+      http.get('http://localhost:8080/api/health', (res) => {
+        if (res.statusCode === 200) {
+          clearInterval(checkBackend)
+          console.log('✅ 后端启动成功')
+          if (mainWindow) {
+            mainWindow.webContents.send('backend-ready')
+          }
+        }
+      }).on('error', () => {
+        retries++
+        if (retries > 30) {
+          clearInterval(checkBackend)
+          console.error('❌ 后端启动超时')
+        }
+      })
+    }, 1000)
+    
+  } else {
+    // 开发环境：正常显示，用于调试
+    jarPath = path.join(__dirname, '../../backend/build/libs/moyue-backend.jar')
+    console.log('启动后端（开发模式）:', jarPath)
+    
+    javaProcess = spawn(javaPath, ['-jar', jarPath, '--server.port=0'], {
+      stdio: 'pipe'
+    })
+    
+    javaProcess.stdout?.on('data', (data: Buffer) => {
+      console.log(`[Java] ${data.toString().trim()}`)
       
-      // 可以在这里把端口传给渲染进程（如果需要）
-      mainWindow.webContents.send('backend-port', port)
-    }
-  })
-
-  javaProcess.stderr?.on('data', (data: Buffer) => {
-    console.error(`[Java Error] ${data.toString().trim()}`)
-  })
+      // 从日志中捕获实际端口
+      const output = data.toString()
+      const match = output.match(/Tomcat started on port\(s\): (\d+)/)
+      if (match && mainWindow) {
+        const port = match[1]
+        console.log(`✅ 后端实际端口: ${port}`)
+        mainWindow.webContents.send('backend-port', port)
+      }
+    })
+    
+    javaProcess.stderr?.on('data', (data: Buffer) => {
+      console.error(`[Java Error] ${data.toString().trim()}`)
+    })
+  }
 
   javaProcess.on('error', (err) => {
     console.error('启动 Java 失败:', err)
+    if (!isDev) {
+      dialog.showErrorBox('启动失败', '无法启动后端服务：' + err.message)
+    }
   })
 
   javaProcess.on('exit', (code: number) => {
@@ -280,11 +282,21 @@ ipcMain.handle('get-app-path', () => {
 })
 
 ipcMain.handle('open-external', (event, url) => {
-  require('electron').shell.openExternal(url)
+  shell.openExternal(url)
 })
 
 ipcMain.handle('open-path', (event, path) => {
-  require('electron').shell.openPath(path)
+  shell.openPath(path)
+})
+
+ipcMain.handle('check-backend', async () => {
+  return new Promise((resolve) => {
+    http.get('http://localhost:8080/api/health', (res) => {
+      resolve(res.statusCode === 200)
+    }).on('error', () => {
+      resolve(false)
+    })
+  })
 })
 
 // ==================== 监听窗口状态变化 ====================
