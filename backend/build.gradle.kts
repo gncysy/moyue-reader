@@ -17,8 +17,6 @@ java {
 
 repositories {
     mavenCentral()
-    // Rhino 1.9.1 可能在 Maven Central，如果找不到用下面的
-    // maven { url = uri("https://oss.sonatype.org/content/repositories/snapshots/") }
 }
 
 dependencies {
@@ -33,8 +31,6 @@ dependencies {
     
     // Rhino 升级到 1.9.1
     implementation("org.mozilla:rhino:1.9.1")
-    // 如果需要完整功能（包括 XML 支持等）
-    // implementation("org.mozilla:rhino-all:1.9.1")
     
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jsoup:jsoup:1.17.2")
@@ -73,9 +69,10 @@ tasks.bootJar {
     }
 }
 
+// CDS 优化：创建共享类数据
 tasks.register<Exec>("createCDS") {
     group = "build"
-    description = "创建 CDS 共享类数据"
+    description = "创建 CDS 共享类数据，加速启动"
     dependsOn("bootJar")
     
     val jarPath = "build/libs/moyue-backend.jar"
@@ -93,10 +90,11 @@ tasks.register<Exec>("createCDS") {
     )
 }
 
+// jlink 打包
 tasks.register<Zip>("jlinkZip") {
     dependsOn("bootJar")
     group = "build"
-    description = "打包完整发行版"
+    description = "使用 jlink 创建自定义 JRE 并打包"
     
     val jreDir = file("$buildDir/custom-jre")
     
@@ -128,6 +126,6 @@ tasks.register<Zip>("jlinkZip") {
 
 tasks.register("fullBuild") {
     group = "build"
-    description = "完整构建"
+    description = "完整构建，包含 CDS 优化"
     dependsOn("bootJar", "createCDS", "jlinkZip")
 }
