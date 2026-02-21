@@ -31,3 +31,22 @@ moyue:
     cache:
       enabled: true
       ttl: 1800  # 30分钟
+      
+# 生产环境 OkHttp 配置
+okhttp:
+  connect-timeout: 10
+  read-timeout: 30
+  write-timeout: 10
+  connection-pool:
+    max-idle: 20
+    keep-alive: 10
+  logging:
+    enabled: false  # 生产环境关闭日志
+  proxy:
+    enabled: false
+
+# 生产环境异步任务配置
+async:
+  core-pool-size: 10
+  max-pool-size: 20
+  queue-capacity: 200
