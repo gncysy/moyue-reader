@@ -18,6 +18,7 @@ data class BookSource(
     var url: String = "",
 
     var group: String? = null,
+
     var enabled: Boolean = true,
 
     @Column(name = "enable_js")
@@ -37,20 +38,30 @@ data class BookSource(
     @Column(name = "header_js")
     var headerJs: String? = null,
 
+    // 新增：搜索 URL 模板，如：https://example.com/search?q={{key}}&page={{page}}
+    @Column(name = "search_url", length = 2000)
+    var searchUrl: String? = null,
+
+    // 修改：规则字段改为对象类型，使用 JPA 转换器
+    @Convert(converter = SearchRuleConverter::class)
     @Column(name = "rule_search", length = 5000)
-    var ruleSearch: String? = null,
+    var ruleSearch: SearchRule? = null,
 
+    @Convert(converter = BookInfoRuleConverter::class)
     @Column(name = "rule_book_info", length = 5000)
-    var ruleBookInfo: String? = null,
+    var ruleBookInfo: BookInfoRule? = null,
 
+    @Convert(converter = TocRuleConverter::class)
     @Column(name = "rule_toc", length = 5000)
-    var ruleToc: String? = null,
+    var ruleToc: TocRule? = null,
 
+    @Convert(converter = ContentRuleConverter::class)
     @Column(name = "rule_content", length = 5000)
-    var ruleContent: String? = null,
+    var ruleContent: ContentRule? = null,
 
+    @Convert(converter = ExploreRuleConverter::class)
     @Column(name = "rule_explore", length = 5000)
-    var ruleExplore: String? = null,
+    var ruleExplore: ExploreRule? = null,
 
     var charset: String = "UTF-8",
 
@@ -69,47 +80,6 @@ data class BookSource(
     @Column(name = "updated_at")
     var updatedAt: LocalDateTime = LocalDateTime.now()
 ) {
-    // ==================== 规则解析方法（新增）====================
-    
-    fun getSearchRule(): SearchRule {
-        return try {
-            Gson().fromJson(ruleSearch, SearchRule::class.java) ?: SearchRule()
-        } catch (e: Exception) {
-            SearchRule()
-        }
-    }
-    
-    fun getBookInfoRule(): BookInfoRule {
-        return try {
-            Gson().fromJson(ruleBookInfo, BookInfoRule::class.java) ?: BookInfoRule()
-        } catch (e: Exception) {
-            BookInfoRule()
-        }
-    }
-    
-    fun getTocRule(): TocRule {
-        return try {
-            Gson().fromJson(ruleToc, TocRule::class.java) ?: TocRule()
-        } catch (e: Exception) {
-            TocRule()
-        }
-    }
-    
-    fun getContentRule(): ContentRule {
-        return try {
-            Gson().fromJson(ruleContent, ContentRule::class.java) ?: ContentRule()
-        } catch (e: Exception) {
-            ContentRule()
-        }
-    }
-    
-    fun getExploreRule(): ExploreRule {
-        return try {
-            Gson().fromJson(ruleExplore, ExploreRule::class.java) ?: ExploreRule()
-        } catch (e: Exception) {
-            ExploreRule()
-        }
-    }
 
     fun toJson(): String {
         val map = mutableMapOf(
@@ -122,14 +92,20 @@ data class BookSource(
             "concurrent" to concurrent,
             "weight" to weight,
             "loginUrl" to loginUrl,
+            "loginCheckJs" to loginCheckJs,
             "headerJs" to headerJs,
+            "searchUrl" to searchUrl,
             "ruleSearch" to ruleSearch,
             "ruleBookInfo" to ruleBookInfo,
             "ruleToc" to ruleToc,
             "ruleContent" to ruleContent,
             "ruleExplore" to ruleExplore,
             "charset" to charset,
-            "securityRating" to securityRating
+            "securityRating" to securityRating,
+            "lastUsed" to lastUsed,
+            "failCount" to failCount,
+            "createdAt" to createdAt,
+            "updatedAt" to updatedAt
         )
         return Gson().toJson(map)
     }
