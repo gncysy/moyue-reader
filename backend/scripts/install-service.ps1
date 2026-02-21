@@ -25,7 +25,7 @@ if (-not (Test-Path $JarPath)) {
 # WinSW 配置
 $WinSWVersion = "v2.12.0"
 $WinSWUrl = "https://github.com/winsw/winsw/releases/download/$WinSWVersion/WinSW-x64.exe"
-$WinSWHash = "A5D6F8A1B3C4E5D6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4A5B6C7D8E9F0" # 替换为实际的 SHA256
+$WinSWHash = "A5D6F8A1B3C4E5D6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4A5B6C7D8E9F0"
 
 # 检查服务是否已存在
 $service = Get-Service -Name "MoyueBackend" -ErrorAction SilentlyContinue
@@ -74,12 +74,10 @@ $WinSWPath = "$InstallPath\moyue-service.exe"
 if (-not (Test-Path $WinSWPath)) {
     Write-Host "📥 下载 WinSW $WinSWVersion..." -ForegroundColor Yellow
     
-    # 下载文件
     try {
         Invoke-WebRequest -Uri $WinSWUrl -OutFile $WinSWPath
         Write-Host "✅ WinSW 下载完成" -ForegroundColor Green
         
-        # 验证哈希
         $actualHash = (Get-FileHash -Path $WinSWPath -Algorithm SHA256).Hash.ToUpper()
         if ($actualHash -ne $WinSWHash) {
             Write-Host "❌ WinSW 哈希校验失败！" -ForegroundColor Red
