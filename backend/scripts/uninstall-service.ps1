@@ -15,7 +15,6 @@ $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if (-not $service) {
     Write-Host "⚠️  服务不存在" -ForegroundColor Yellow
     
-    # 如果服务不存在但指定了清理，询问是否删除文件
     if ($CleanFiles -and (Test-Path $ServiceDir)) {
         Write-Host "`n🗑️  服务不存在，是否删除安装目录和文件？" -ForegroundColor Yellow
         $confirm = Read-Host "确认删除? (y/N)"
