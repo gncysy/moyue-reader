@@ -23,3 +23,18 @@ moyue:
   performance:
     cache:
       enabled: false  # 开发环境禁用缓存
+      
+# 开发环境 OkHttp 配置
+okhttp:
+  connect-timeout: 5
+  read-timeout: 10
+  write-timeout: 5
+  logging:
+    enabled: true
+    level: BODY  # 开发环境打印完整请求体
+
+# 开发环境异步任务配置
+async:
+  core-pool-size: 2
+  max-pool-size: 4
+  queue-capacity: 20
