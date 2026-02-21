@@ -1,12 +1,12 @@
 package com.moyue.service
 
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.moyue.model.Book
 import com.moyue.model.BookChapter
 import com.moyue.model.BookSource
 import com.moyue.repository.BookSourceRepository
 import com.moyue.source.engine.RhinoEngine
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -18,6 +18,9 @@ class SourceService(
     private val gson: Gson
 ) {
 
+    /**
+     * 搜索书籍（多书源并发）
+     */
     fun searchBook(keyword: String, sourceIds: List<String>? = null): List<SearchResult> {
         val sources = if (sourceIds != null) {
             bookSourceRepository.findAllById(sourceIds).filter { it.enabled }
@@ -25,43 +28,60 @@ class SourceService(
             bookSourceRepository.findByEnabledTrue()
         }
 
+        // 并发搜索，最多同时 3 个（避免被封）
         val results = sources.parallelStream()
-            .limit(5)
+            .limit(3)
             .map { source ->
                 try {
                     val engineResult = rhinoEngine.executeSearch(source, keyword)
                     if (engineResult.success) {
-                        parseBooks(engineResult.result, source)
+                        val books = parseBooks(engineResult.result, source)
+                        books.map { SearchResult(it, source) }
                     } else {
                         emptyList()
                     }
                 } catch (e: Exception) {
-                    empty emptyList<Book>()
-               List<Book>()
+                    e.printStackTrace()
+                    emptyList()
                 }
             }
             .flatMap { it.stream() }
             .toList()
 
-        return results.map { SearchResult(it, it.source) }
+        return results
     }
 
+    /**
+     * 获取书籍详情
+     */
     fun getBookInfo(bookUrl: String, sourceId: String): Book? {
         val source = bookSourceRepository.findById(sourceId).orElse(null) ?: return null
+
+        // 检查缓存
+        val cacheKey = "bookInfo:$sourceId:$bookUrl"
+        cacheService.get(cacheKey)?.let {
+            return it as Book
+        }
+
         val book = Book(bookUrl = bookUrl, origin = sourceId, source = source)
         val result = rhinoEngine.executeBookInfo(source, book)
 
         return if (result.success) {
             updateBookFromResult(book, result.result)
+            cacheService.put(cacheKey, book, 3600) // 缓存1小时
             book
         } else null
     }
 
+    /**
+     * 获取目录
+     */
     fun getChapterList(bookUrl: String, sourceId: String): List<BookChapter> {
         val source = bookSourceRepository.findById(sourceId).orElse(null) ?: return emptyList()
+
+        // 检查缓存
         val cacheKey = "toc:$sourceId:$bookUrl"
         cacheService.get(cacheKey)?.let {
-            @Suppress("UNCHECKED_CAST")
             return it as List<BookChapter>
         }
 
@@ -70,13 +90,18 @@ class SourceService(
 
         return if (result.success) {
             val chapters = parseChapters(result.result, bookUrl)
-            cacheService.put(cacheKey, chapters, 3600)
+            cacheService.put(cacheKey, chapters, 3600) // 缓存1小时
             chapters
         } else emptyList()
     }
 
+    /**
+     * 获取正文
+     */
     fun getChapterContent(chapterUrl: String, bookUrl: String, sourceId: String): String {
         val source = bookSourceRepository.findById(sourceId).orElse(null) ?: return ""
+
+        // 检查缓存
         val cacheKey = "content:$sourceId:$chapterUrl"
         cacheService.get(cacheKey)?.let {
             return it as String
@@ -88,173 +113,134 @@ class SourceService(
 
         return if (result.success) {
             val content = parseContent(result.result)
-            cacheService.put(cacheKey, content, 86400)
+            cacheService.put(cacheKey, content, 86400) // 缓存24小时
             content
         } else ""
     }
 
+    /**
+     * 导入书源
+     */
     @Transactional
     fun importSource(json: String): List<BookSource> {
         val type = object : TypeToken<List<BookSource>>() {}.type
         val sources = gson.fromJson<List<BookSource>>(json, type)
+
+        // 验证并保存
         return sources.map { source ->
             source.enabled = true
+            source.failCount = 0
             bookSourceRepository.save(source)
         }
     }
 
+    /**
+     * 导出书源
+     */
     fun exportSource(sourceIds: List<String>): String {
         val sources = bookSourceRepository.findAllById(sourceIds)
         return gson.toJson(sources)
     }
 
+    /**
+     * 测试书源
+     */
     fun testSource(sourceId: String): Map<String, Any> {
         val source = bookSourceRepository.findById(sourceId).orElse(null)
             ?: return mapOf("error" to "书源不存在")
+
         return rhinoEngine.testSource(source)
     }
 
+    // ==================== 解析方法实现 ====================
+
+    /**
+     * 解析搜索结果
+     */
     private fun parseBooks(result: Any?, source: BookSource): List<Book> {
         if (result == null) return emptyList()
         
         return try {
             when (result) {
-                is String -> {
-                    val list = gson.fromJson(result, List::class.java)
-                    list?.mapNotNull { item ->
-                        if (item is Map<*, *>) {
-                            Book(
-                                name = (item["name"] as? String)?.trim() ?: "",
-                                author = (item["author"] as? String)?.trim() ?: "",
-                                bookUrl = (item["bookUrl"] as? String) ?: "",
-                                coverUrl = item["coverUrl"] as? String,
-                                intro = item["intro"] as? String,
-                                origin = source.id,
-                                source = source
-                            )
-                        } else null
-                    } ?: emptyList()
-                }
                 is List<*> -> {
-                    result.mapNotNull { item ->
-                        if (item is Map<*, *>) {
-                            Book(
-                                name = (item["name"] as? String)?.trim() ?: "",
-                                author = (item["author"] as? String)?.trim() ?: "",
-                                bookUrl = (item["bookUrl"] as? String) ?: "",
-                                coverUrl = item["coverUrl"] as? String,
-                                intro = item["intro"] as? String,
-                                origin = source.id,
-                                source = source
-                            )
-                        } else null
+                    result.filterIsInstance<Map<String, Any>>().map { map ->
+                        Book(
+                            name = map["name"] as? String ?: "",
+                            author = map["author"] as? String ?: "",
+                            coverUrl = map["coverUrl"] as? String,
+                            intro = map["intro"] as? String,
+                            bookUrl = map["bookUrl"] as? String ?: "",
+                            origin = source.id,
+                            source = source,
+                            lastReadAt = null
+                        )
                     }
+                }
+                is String -> {
+                    // 尝试解析 JSON 字符串
+                    val list = gson.fromJson(result, List::class.java)
+                    parseBooks(list, source)
                 }
                 else -> emptyList()
             }
         } catch (e: Exception) {
-            try {
-                val map = gson.fromJson(result.toString(), Map::class.java) as? Map<String, Any>
-                if (map != null) {
-                    listOf(Book(
-                        name = (map["name"] as? String)?.trim() ?: "",
-                        author = (map["author"] as? String)?.trim() ?: "",
-                        bookUrl = (map["bookUrl"] as? String) ?: "",
-                        coverUrl = map["coverUrl"] as? String,
-                        intro = map["intro"] as? String,
-                        origin = source.id,
-                        source = source
-                    ))
-                } else emptyList()
-            } catch (e: Exception) {
-                emptyList()
-            }
+            e.printStackTrace()
+            emptyList()
         }
     }
 
+    /**
+     * 解析目录
+     */
     private fun parseChapters(result: Any?, bookUrl: String): List<BookChapter> {
         if (result == null) return emptyList()
         
         return try {
-            val resultList = when (result) {
-                is String -> gson.fromJson(result, List::class.java)
-                is List<*> -> result
+            when (result) {
+                is List<*> -> {
+                    result.filterIsInstance<Map<String, Any>>().mapIndexed { index, map ->
+                        BookChapter(
+                            title = map["title"] as? String ?: map["name"] as? String ?: "未知章节",
+                            url = map["url"] as? String ?: map["chapterUrl"] as? String ?: "",
+                            bookUrl = bookUrl,
+                            index = map["index"] as? Int ?: index,
+                            isRead = false
+                        )
+                    }
+                }
+                is String -> {
+                    val list = gson.fromJson(result, List::class.java)
+                    parseChapters(list, bookUrl)
+                }
                 else -> emptyList()
             }
-            
-            resultList?.mapIndexed { index, item ->
-                if (item is Map<*, *>) {
-                    BookChapter(
-                        title = (item["title"] as? String 
-                            ?: item["chapterName"] as? String 
-                            ?: "第${index + 1}章").trim(),
-                        url = (item["url"] as? String 
-                            ?: item["chapterUrl"] as? String 
-                            ?: ""),
-                        bookUrl = bookUrl,
-                        index = index,
-                        isVip = item["isVip"] as? Boolean ?: false,
-                        isPay = item["isPay"] as? Boolean ?: false
-                    )
-                } else null
-            }?.filterNotNull() ?: emptyList()
         } catch (e: Exception) {
-            try {
-                val map = gson.fromJson(result.toString(), Map::class.java) as? Map<String, Any>
-                if (map != null) {
-                    listOf(BookChapter(
-                        title = (map["title"] as? String 
-                            ?: map["chapterName"] as? String 
-                            ?: "第1章").trim(),
-                        url = (map["url"] as? String 
-                            ?: map["chapterUrl"] as? String 
-                            ?: ""),
-                        bookUrl = bookUrl,
-                        index = 0
-                    ))
-                } else emptyList()
-            } catch (e: Exception) {
-                emptyList()
-            }
+            e.printStackTrace()
+            emptyList()
         }
     }
 
+    /**
+     * 解析正文内容
+     */
     private fun parseContent(result: Any?): String {
-        return try {
-            when (result) {
-                is String -> result
-                is List<*> -> result.filterIsInstance<String>().joinToString("\n")
-                else -> result?.toString() ?: ""
-            }
-        } catch (e: Exception) {
-            result?.toString() ?: ""
+        return when (result) {
+            is String -> result
+            is List<*> -> result.joinToString("\n")
+            else -> result?.toString() ?: ""
         }
     }
 
+    /**
+     * 更新书籍信息
+     */
     private fun updateBookFromResult(book: Book, result: Any?) {
-        if (result == null) return
-        try {
-            when (result) {
-                is String -> {
-                    val map = gson.fromJson(result, Map::class.java) as? Map<String, Any>
-                    map?.let { updateBookFromMap(book, it) }
-                }
-                is Map<*, *> -> {
-                    @Suppress("UNCHECKED_CAST")
-                    updateBookFromMap(book, result as Map<String, Any>)
-                }
-            }
-        } catch (e: Exception) {}
-    }
-
-    private fun updateBookFromMap(book: Book, map: Map<String, Any>) {
-        map["name"]?.let { book.name = it as String }
-        map["author"]?.let { book.author = it as String }
-        map["coverUrl"]?.let { book.coverUrl = it as? String }
-        map["intro"]?.let { book.intro = it as? String }
-        map["chapterCount"]?.let { 
-            book.chapterCount = (it as? Number)?.toInt() ?: 0 
-        }
+        if (result !is Map<*, *>) return
+        
+        book.name = result["name"] as? String ?: book.name
+        book.author = result["author"] as? String ?: book.author
+        book.coverUrl = result["coverUrl"] as? String ?: book.coverUrl
+        book.intro = result["intro"] as? String ?: book.intro
     }
 
     data class SearchResult(val book: Book, val source: BookSource)
