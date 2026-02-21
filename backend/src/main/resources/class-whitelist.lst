@@ -1,0 +1,70 @@
+# ============================================================================
+# 墨阅后端 - CDS 类共享数据归档白名单
+# ============================================================================
+# 用途：定义允许在 JavaScript 沙箱环境中使用的 Java 类
+# 维护：添加新类时请按字母顺序排列，并在上方注释说明用途
+# 生成日期：2025-01-09
+# 版本：1.0
+# ============================================================================
+
+# --------------------
+# Java 核心类
+# --------------------
+java/lang/Object
+java/lang/String
+java/lang/Integer
+java/lang/Boolean
+java/lang/Long
+java/lang/Double
+java/lang/System
+java/lang/Thread
+java/util/ArrayList
+java/util/HashMap
+java/util/HashSet
+java/util/Date
+java/io/File
+java/io/InputStream
+java/io/OutputStream
+java/net/URL
+java/net/HttpURLConnection
+
+# --------------------
+# 加密类
+# --------------------
+javax/crypto/Cipher
+
+# --------------------
+# Spring Framework
+# --------------------
+org/springframework/boot/SpringApplication
+org/springframework/context/ApplicationContext
+
+# --------------------
+# 墨阅应用类
+# --------------------
+com/moyue/MoyueApplication
+com/moyue/controller/BookController
+com/moyue/controller/SourceController
+com/moyue/controller/SecurityController
+com/moyue/engine/RhinoEngine
+com/moyue/security/SafeJsExtensions
+com/moyue/security/SecurityPolicy
+com/moyue/service/SourceService
+com/moyue/service/BookService
+com/moyue/service/CacheService
+com/moyue/compat/AndroidCompat
+
+# --------------------
+# Rhino JavaScript 引擎
+# --------------------
+org/mozilla/javascript/Context
+org/mozilla/javascript/Scriptable
+org/mozilla/javascript/Function
+org/mozilla/javascript/ScriptableObject
+
+# --------------------
+# OkHttp 网络库
+# --------------------
+okhttp3/OkHttpClient
+okhttp3/Request
+okhttp3/Response
