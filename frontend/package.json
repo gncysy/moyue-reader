@@ -1,62 +1,156 @@
 {
   "name": "moyue-desktop",
   "version": "0.1.0",
+  "description": "墨阅 - 跨平台桌面阅读器，支持 Legado 书源",
+  "author": "gncysy",
+  "license": "GPL-3.0",
   "private": true,
   "main": "dist-electron/main.js",
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build",
     "preview": "vite preview",
-    "electron:dev": "vite & electron .",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "electron:build:service": "npm run build && electron-builder --win nsis"
+    "electron:build:win": "npm run build && electron-builder --win",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:linux": "npm run build && electron-builder --linux",
+    "electron:rebuild": "electron-rebuild -f -w",
+    "lint": "vue-tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{vue,ts,tsx,js,jsx,json,css,scss,md}\""
   },
   "dependencies": {
-    "vue": "^3.4.0",
-    "vue-router": "^4.2.5",
-    "pinia": "^2.1.7",
-    "axios": "^1.6.2",
-    "element-plus": "^2.4.3",
-    "@element-plus/icons-vue": "^2.3.1",
-    "monaco-editor": "^0.45.0"
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0",
+    "pinia": "^2.2.0",
+    "axios": "^1.7.0",
+    "element-plus": "^2.8.0",
+    "@element-plus/icons-vue": "^2.4.0",
+    "monaco-editor": "^0.52.0"
   },
   "devDependencies": {
-    "vite": "^5.0.0",
-    "@vitejs/plugin-vue": "^4.5.0",
-    "typescript": "^5.3.0",
-    "vue-tsc": "^1.8.0",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.9.1",
-    "concurrently": "^8.2.0",
-    "cross-env": "^7.0.3"
+    "vite": "^6.0.0",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "typescript": "^5.6.0",
+    "vue-tsc": "^2.1.0",
+    "electron": "^40.0.0",
+    "electron-builder": "^25.0.0",
+    "electron-updater": "^6.3.0",
+    "concurrently": "^9.0.0",
+    "cross-env": "^7.0.3",
+    "wait-on": "^8.0.0",
+    "unplugin-auto-import": "^0.18.0",
+    "unplugin-vue-components": "^0.27.0",
+    "unplugin-element-plus": "^0.9.0",
+    "@types/node": "^22.0.0",
+    "prettier": "^3.4.0",
+    "eslint": "^9.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0"
   },
   "build": {
     "appId": "com.moyue.reader",
     "productName": "墨阅",
+    "copyright": "Copyright © 2026 墨阅团队",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "dist-electron/main.js"
+    },
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/monaco-editor/**/*"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "build/icon.ico"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeader": "build/installer-header.bmp",
+      "installerSidebar": "build/installer-sidebar.bmp",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
       "include": "build/nsis-installer.nsh"
     },
     "mac": {
-      "target": "dmg",
-      "icon": "build/icon.icns"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.books",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "build/icon.png"
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "icon": "build/icons",
+      "category": "Office",
+      "maintainer": "gncysy",
+      "vendor": "墨阅团队",
+      "synopsis": "跨平台桌面阅读器",
+      "description": "墨阅是一个跨平台桌面阅读器，支持 Legado 书源",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "gncysy",
+      "repo": "moyue-reader"
     }
   }
 }
