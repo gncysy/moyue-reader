@@ -20,45 +20,79 @@ repositories {
 }
 
 dependencies {
+    // Spring Boot 核心
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    implementation("org.springframework.boot:spring-boot-starter-cache")
+    
+    // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-    implementation("com.h2database:h2")
-    implementation("org.xerial:sqlite-jdbc:3.44.1.0")
     
-    // Rhino 升级到 1.9.1
+    // 数据库 - 使用 SQLite 作为主数据库，H2 仅用于测试
+    implementation("org.xerial:sqlite-jdbc:3.44.1.0")
+    implementation("org.hibernate.orm:hibernate-community-dialects") // SQLite 方言支持
+    runtimeOnly("com.h2database:h2") // 仅运行时依赖，用于测试
+    
+    // JavaScript 引擎 - Rhino 1.9.1 最新版本
     implementation("org.mozilla:rhino:1.9.1")
     
+    // 网络与解析
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jsoup:jsoup:1.17.2")
     implementation("com.google.code.gson:gson:2.10.1")
-    implementation("commons-codec:commons-codec:1.16.0")
+    
+    // 加密工具
+    implementation("commons-codec:commons-codec:1.16.1")
+    
+    // 缓存实现
+    implementation("com.github.ben-manes.caffeine:caffeine")
+    
+    // 开发工具
+    developmentOnly("org.springframework.boot:spring-boot-devtools")
+    annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
+    
+    // 测试
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.junit.jupiter:junit-jupiter")
 }
 
 tasks.withType<KotlinCompile> {
     kotlinOptions {
-        freeCompilerArgs += "-Xjsr305=strict"
+        freeCompilerArgs += listOf(
+            "-Xjsr305=strict",
+            "-Xopt-in=kotlin.RequiresOptIn",
+            "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
+        )
         jvmTarget = "17"
+        allWarningsAsErrors = false
     }
 }
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    systemProperty("spring.profiles.active", "test")
 }
 
 tasks.bootRun {
     jvmArgs = listOf(
         "-server",
-        "-Xms128m",
-        "-Xmx512m",
+        "-Xms256m",
+        "-Xmx1024m",
         "-XX:+UseG1GC",
         "-XX:+UseStringDeduplication",
         "-XX:MaxGCPauseMillis=100",
-        "-Djava.awt.headless=true"
+        "-XX:InitiatingHeapOccupancyPercent=45",
+        "-XX:+HeapDumpOnOutOfMemoryError",
+        "-XX:HeapDumpPath=${buildDir}/heap-dump.hprof",
+        "-Djava.awt.headless=true",
+        "-Dspring.jpa.show-sql=false",
+        "-Dlogging.level.root=INFO",
+        "-Dlogging.level.com.moyue=DEBUG"
     )
 }
 
@@ -67,44 +101,56 @@ tasks.bootJar {
     layered {
         enabled = true
     }
+    exclude("org/springframework/boot/devtools/**")
 }
 
-// CDS 优化：创建共享类数据
-tasks.register<Exec>("createCDS") {
+// 简化的 CDS 优化任务
+tasks.register<Exec>("prepareCDS") {
     group = "build"
-    description = "创建 CDS 共享类数据，加速启动"
+    description = "准备 CDS 共享类数据（需要先运行一次应用）"
     dependsOn("bootJar")
     
     val jarPath = "build/libs/moyue-backend.jar"
     val cdsPath = "build/libs/moyue.jsa"
     
-    onlyIf {
-        !file(cdsPath).exists()
-    }
-    
     commandLine(
         "java",
         "-Xshare:dump",
         "-XX:SharedArchiveFile=$cdsPath",
+        "-XX:+UnlockDiagnosticVMOptions",
+        "-XX:DumpLoadedClassList=${buildDir}/classes.lst",
         "-jar", jarPath
     )
 }
 
-// jlink 打包
+// 改进的 jlink 打包
 tasks.register<Zip>("jlinkZip") {
     dependsOn("bootJar")
     group = "build"
     description = "使用 jlink 创建自定义 JRE 并打包"
     
     val jreDir = file("$buildDir/custom-jre")
+    val modules = listOf(
+        "java.base",
+        "java.sql",
+        "java.naming",
+        "java.management",
+        "java.xml",
+        "java.logging",
+        "java.desktop",
+        "java.security.jgss",
+        "java.net.http",
+        "jdk.httpserver",
+        "jdk.unsupported"
+    )
     
     doFirst {
         delete(jreDir)
         exec {
             commandLine(
                 "jlink",
-                "--module-path", System.getProperty("java.home") + "/jmods",
-                "--add-modules", "java.base,java.sql,java.naming,java.management,java.xml,java.logging,java.desktop,java.security.jgss",
+                "--module-path", "${System.getProperty("java.home")}/jmods",
+                "--add-modules", modules.joinToString(","),
                 "--output", jreDir.absolutePath,
                 "--strip-debug",
                 "--compress", "2",
@@ -114,18 +160,32 @@ tasks.register<Zip>("jlinkZip") {
         }
     }
     
-    from(jreDir)
+    from(jreDir) {
+        into("jre")
+    }
     from("build/libs") {
         include("moyue-backend.jar")
-        include("moyue.jsa")
+        into("app")
     }
     
     archiveFileName.set("moyue-jre-${version}.zip")
     destinationDirectory.set(file("$buildDir/dist"))
 }
 
+// 完整构建任务
 tasks.register("fullBuild") {
     group = "build"
-    description = "完整构建，包含 CDS 优化"
-    dependsOn("bootJar", "createCDS", "jlinkZip")
+    description = "完整构建（jlink + 瘦身打包）"
+    dependsOn("bootJar", "jlinkZip")
+}
+
+// 清理任务
+tasks.register("cleanDist") {
+    group = "build"
+    description = "清理构建产物"
+    doLast {
+        delete("$buildDir/dist")
+        delete("$buildDir/custom-jre")
+        delete("$buildDir/heap-dump.hprof")
+    }
 }
