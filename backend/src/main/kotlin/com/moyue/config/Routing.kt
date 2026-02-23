@@ -20,6 +20,9 @@ fun Application.configureRouting() {
         // 书源路由
         sourceRoutes()
         
+        // WebSocket 路由
+        webSocketRoutes()
+        
         // TODO: 添加其他路由
         
         logger.info { "路由配置完成" }
