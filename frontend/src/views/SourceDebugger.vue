@@ -1,3 +1,9 @@
+import { ref, computed, onMounted, watch } from 'vue'
+import { ElMessage } from 'element-plus'
+import MonacoEditor from '@/components/MonacoEditor.vue'
+import axios from 'axios'
+import { useSourceStore } from '@/stores/source'
+
 <template>
   <div class="source-debugger">
     <el-row :gutter="20">
