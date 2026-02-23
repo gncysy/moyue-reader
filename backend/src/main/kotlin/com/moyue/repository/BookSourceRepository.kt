@@ -1,46 +1,121 @@
 package com.moyue.repository
-
+ 
 import com.moyue.model.BookSource
-import org.springframework.data.domain.Page
-import org.springframework.data.domain.Pageable
-import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.stereotype.Repository
-
-@Repository
-interface BookSourceRepository : JpaRepository<BookSource, String> {
+import com.moyue.model.tables.BookSources
+import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.transactions.transaction
+import java.time.LocalDateTime
+ 
+/**
+ * 书源数据访问层
+ */
+class BookSourceRepository {
     
-    // 基础查询 - 返回全部（小数据量场景）
-    fun findByEnabledTrue(): List<BookSource>
+    fun findAll(): List<BookSource> = transaction {
+        BookSources.selectAll()
+            .orderBy(BookSources.weight to SortOrder.DESC)
+            .map { it.toBookSource() }
+    }
     
-    fun findByEnabledFalse(): List<BookSource>
+    fun findById(id: String): BookSource? = transaction {
+        BookSources.select { BookSources.id eq id }
+            .singleOrNull()
+            ?.toBookSource()
+    }
     
-    fun findByUrl(url: String): BookSource?
+    fun findByEnabled(enabled: Boolean): List<BookSource> = transaction {
+        BookSources.select { BookSources.enabled eq enabled }
+            .orderBy(BookSources.weight to SortOrder.DESC)
+            .map { it.toBookSource() }
+    }
     
-    fun findByNameContainingIgnoreCase(name: String): List<BookSource>
+    fun save(source: BookSource): BookSource = transaction {
+        val now = LocalDateTime.now()
+        
+        BookSources.insert {
+            it[id] = source.id
+            it[name] = source.name
+            it[url] = source.url
+            it[group] = source.group
+            it[enabled] = source.enabled
+            it[enableJs] = source.enableJs
+            it[concurrent] = source.concurrent
+            it[weight] = source.weight
+            it[loginUrl] = source.loginUrl
+            it[loginCheckJs] = source.loginCheckJs
+            it[headerJs] = source.headerJs
+            it[searchUrl] = source.searchUrl
+            it[ruleSearch] = source.ruleSearch
+            it[ruleBookInfo] = source.ruleBookInfo
+            it[ruleToc] = source.ruleToc
+            it[ruleContent] = source.ruleContent
+            it[ruleExplore] = source.ruleExplore
+            it[charset] = source.charset
+            it[securityRating] = source.securityRating
+            it[lastUsed] = source.lastUsed
+            it[failCount] = source.failCount
+            it[createdAt] = now
+            it[updatedAt] = now
+        }
+        
+        source.copy(updatedAt = now)
+    }
     
-    // 删除冗余的自定义查询，使用 JpaRepository 内置的 findAllById 方法
-    // @Query("SELECT b FROM BookSource b WHERE b.id IN :ids")
-    // fun findAllByIdIn(@Param("ids") ids: List<String>): List<BookSource>
+    fun update(source: BookSource): BookSource = transaction {
+        BookSources.update({ BookSources.id eq source.id }) {
+            it[name] = source.name
+            it[url] = source.url
+            it[group] = source.group
+            it[enabled] = source.enabled
+            it[enableJs] = source.enableJs
+            it[concurrent] = source.concurrent
+            it[weight] = source.weight
+            it[loginUrl] = source.loginUrl
+            it[loginCheckJs] = source.loginCheckJs
+            it[headerJs] = source.headerJs
+            it[searchUrl] = source.searchUrl
+            it[ruleSearch] = source.ruleSearch
+            it[ruleBookInfo] = source.ruleBookInfo
+            it[ruleToc] = source.ruleToc
+            it[ruleContent] = source.ruleContent
+            it[ruleExplore] = source.ruleExplore
+            it[charset] = source.charset
+            it[securityRating] = source.securityRating
+            it[lastUsed] = source.lastUsed
+            it[failCount] = source.failCount
+            it[updatedAt] = LocalDateTime.now()
+        }
+        
+        source.copy(updatedAt = LocalDateTime.now())
+    }
     
-    fun findByGroup(group: String): List<BookSource>
+    fun delete(id: String): Boolean = transaction {
+        BookSources.deleteWhere { BookSources.id eq id } > 0
+    }
     
-    fun findAllByOrderByWeightDesc(): List<BookSource>
-    
-    // 统计查询
-    @Query("SELECT COUNT(b) FROM BookSource b WHERE b.enabled = true")
-    fun countEnabled(): Long
-    
-    // 新增：分页查询版本（大数据量场景推荐使用）
-    fun findByEnabledTrue(pageable: Pageable): Page<BookSource>
-    
-    fun findByEnabledFalse(pageable: Pageable): Page<BookSource>
-    
-    fun findByNameContainingIgnoreCase(name: String, pageable: Pageable): Page<BookSource>
-    
-    fun findByGroup(group: String, pageable: Pageable): Page<BookSource>
-    
-    fun findAllByOrderByWeightDesc(pageable: Pageable): Page<BookSource>
-    
-    // 新增：批量查询（按权重范围）
-    fun findByWeightBetween(minWeight: Int, maxWeight: Int): List<BookSource>
+    private fun ResultRow.toBookSource() = BookSource(
+        id = this[BookSources.id].toString(),
+        name = this[BookSources.name],
+        url = this[BookSources.url],
+        group = this[BookSources.group],
+        enabled = this[BookSources.enabled],
+        enableJs = this[BookSources.enableJs],
+        concurrent = this[BookSources.concurrent],
+        weight = this[BookSources.weight],
+        loginUrl = this[BookSources.loginUrl],
+        loginCheckJs = this[BookSources.loginCheckJs],
+        headerJs = this[BookSources.headerJs],
+        searchUrl = this[BookSources.searchUrl],
+        ruleSearch = this[BookSources.ruleSearch],
+        ruleBookInfo = this[BookSources.ruleBookInfo],
+        ruleToc = this[BookSources.ruleToc],
+        ruleContent = this[BookSources.ruleContent],
+        ruleExplore = this[BookSources.ruleExplore],
+        charset = this[BookSources.charset],
+        securityRating = this[BookSources.securityRating],
+        lastUsed = this[BookSources.lastUsed],
+        failCount = this[BookSources.failCount],
+        createdAt = this[BookSources.createdAt],
+        updatedAt = this[BookSources.updatedAt]
+    )
 }
