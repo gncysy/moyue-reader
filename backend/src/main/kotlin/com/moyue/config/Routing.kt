@@ -20,10 +20,16 @@ fun Application.configureRouting() {
         // 书源路由
         sourceRoutes()
         
+        // 安全路由
+        securityRoutes()
+        
+        // 调试路由（仅开发环境）
+        if (environment.config.property("ktor.environment").getString() == "dev") {
+            debugRoutes()
+        }
+        
         // WebSocket 路由
         webSocketRoutes()
-        
-        // TODO: 添加其他路由
         
         logger.info { "路由配置完成" }
     }
