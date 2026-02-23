@@ -1,5 +1,5 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
+ 
 plugins {
     id("org.springframework.boot") version "3.2.0"
     id("io.spring.dependency-management") version "1.1.4"
@@ -7,18 +7,18 @@ plugins {
     kotlin("plugin.spring") version "1.9.22"
     kotlin("plugin.jpa") version "1.9.22"
 }
-
+ 
 group = "com.moyue"
 version = "0.1.0"
-
+ 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
 }
-
+ 
 repositories {
     mavenCentral()
 }
-
+ 
 dependencies {
     // Spring Boot 核心
     implementation("org.springframework.boot:spring-boot-starter-web")
@@ -60,7 +60,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.junit.jupiter:junit-jupiter")
 }
-
+ 
 tasks.withType<KotlinCompile> {
     kotlinOptions {
         freeCompilerArgs += listOf(
@@ -72,12 +72,12 @@ tasks.withType<KotlinCompile> {
         allWarningsAsErrors = false
     }
 }
-
+ 
 tasks.withType<Test> {
     useJUnitPlatform()
     systemProperty("spring.profiles.active", "test")
 }
-
+ 
 tasks.bootRun {
     jvmArgs = listOf(
         "-server",
@@ -88,104 +88,17 @@ tasks.bootRun {
         "-XX:MaxGCPauseMillis=100",
         "-XX:InitiatingHeapOccupancyPercent=45",
         "-XX:+HeapDumpOnOutOfMemoryError",
-        "-XX:HeapDumpPath=${buildDir}/heap-dump.hprof",
         "-Djava.awt.headless=true",
         "-Dspring.jpa.show-sql=false",
         "-Dlogging.level.root=INFO",
         "-Dlogging.level.com.moyue=DEBUG"
     )
 }
-
+ 
 tasks.bootJar {
     archiveFileName.set("moyue-backend.jar")
     layered {
         enabled = true
     }
     exclude("org/springframework/boot/devtools/**")
-}
-
-// 简化的 CDS 优化任务
-tasks.register<Exec>("prepareCDS") {
-    group = "build"
-    description = "准备 CDS 共享类数据（需要先运行一次应用）"
-    dependsOn("bootJar")
-    
-    val jarPath = "build/libs/moyue-backend.jar"
-    val cdsPath = "build/libs/moyue.jsa"
-    
-    commandLine(
-        "java",
-        "-Xshare:dump",
-        "-XX:SharedArchiveFile=$cdsPath",
-        "-XX:+UnlockDiagnosticVMOptions",
-        "-XX:DumpLoadedClassList=${buildDir}/classes.lst",
-        "-jar", jarPath
-    )
-}
-
-// 改进的 jlink 打包
-tasks.register<Zip>("jlinkZip") {
-    dependsOn("bootJar")
-    group = "build"
-    description = "使用 jlink 创建自定义 JRE 并打包"
-    
-    val jreDir = file("$buildDir/custom-jre")
-    val modules = listOf(
-        "java.base",
-        "java.sql",
-        "java.naming",
-        "java.management",
-        "java.xml",
-        "java.logging",
-        "java.desktop",
-        "java.security.jgss",
-        "java.net.http",
-        "jdk.httpserver",
-        "jdk.unsupported"
-    )
-    
-    doFirst {
-        delete(jreDir)
-        exec {
-            commandLine(
-                "jlink",
-                "--module-path", "${System.getProperty("java.home")}/jmods",
-                "--add-modules", modules.joinToString(","),
-                "--output", jreDir.absolutePath,
-                "--strip-debug",
-                "--compress", "2",
-                "--no-header-files",
-                "--no-man-pages"
-            )
-        }
-    }
-    
-    from(jreDir) {
-        into("jre")
-    }
-    from("build/libs") {
-        include("moyue-backend.jar")
-        into("app")
-    }
-    
-    archiveFileName.set("moyue-jre-${version}.zip")
-    destinationDirectory.set(file("$buildDir/dist"))
-}
-
-// 完整构建任务
-tasks.register("fullBuild") {
-    group = "build"
-    description = "完整构建（jlink + 瘦身打包）"
-    dependsOn("bootJar", "jlinkZip")
-}
-
-// 清理任务
-tasks.register("cleanDist") {
-    group = "build"
-    description = "清理构建产物"
-    doLast {
-        delete("$buildDir/dist")
-        delete("$buildDir/custom-jre")
-        delete("$buildDir/heap-dump.hprof")
-    }
 }
