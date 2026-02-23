@@ -87,15 +87,12 @@ dependencies {
 }
  
 tasks.withType<KotlinCompile> {
-    kotlinOptions {
-        freeCompilerArgs += listOf(
-            "-Xjsr305=strict",
-            "-Xopt-in=kotlin.RequiresOptIn",
-            "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-opt-in=kotlinx.serialization.ExperimentalSerializationApi"
-        )
-        jvmTarget = "17"
-        allWarningsAsErrors = false
+    compilerOptions {
+        freeCompilerArgs.add("-Xjsr305=strict")
+        freeCompilerArgs.add("-Xopt-in=kotlin.RequiresOptIn")
+        freeCompilerArgs.add("-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi")
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        allWarningsAsErrors.set(false)
     }
 }
  
@@ -115,7 +112,7 @@ tasks.named<JavaExec>("run") {
         "-XX:MaxGCPauseMillis=100",
         "-XX:InitiatingHeapOccupancyPercent=45",
         "-XX:+HeapDumpOnOutOfMemoryError",
-        "-XX:HeapDumpPath=${buildDir}/heap-dump.hprof",
+        "-XX:HeapDumpPath=${layout.buildDirectory.get()}/heap-dump.hprof",
         "-Djava.awt.headless=true",
         "-Dktor.environment=prod",
         "-Dlogging.level.root=INFO",
@@ -134,90 +131,4 @@ tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from(configurations.runtimeClasspath.get().map { zipTree(it) })
     archiveFileName.set("moyue-backend.jar")
-}
- 
-// 改进的 CDS 优化任务
-tasks.register<Exec>("prepareCDS") {
-    group = "build"
-    description = "准备 CDS 共享类数据（需要先运行一次应用）"
-    dependsOn("jar")
-    
-    val jarPath = "build/libs/moyue-backend.jar"
-    val cdsPath = "build/libs/moyue.jsa"
-    
-    commandLine(
-        "java",
-        "-Xshare:dump",
-        "-XX:SharedArchiveFile=$cdsPath",
-        "-XX:+UnlockDiagnosticVMOptions",
-        "-XX:DumpLoadedClassList=${buildDir}/classes.lst",
-        "-jar", jarPath
-    )
-}
- 
-// 改进的 jlink 打包
-tasks.register<Zip>("jlinkZip") {
-    dependsOn("jar")
-    group = "build"
-    description = "使用 jlink 创建自定义 JRE 并打包"
-    
-    val jreDir = file("$buildDir/custom-jre")
-    val modules = listOf(
-        "java.base",
-        "java.sql",
-        "java.naming",
-        "java.management",
-        "java.xml",
-        "java.logging",
-        "java.desktop",
-        "java.security.jgss",
-        "java.net.http",
-        "jdk.httpserver",
-        "jdk.unsupported"
-    )
-    
-    doFirst {
-        delete(jreDir)
-        exec {
-            commandLine(
-                "jlink",
-                "--module-path", "${System.getProperty("java.home")}/jmods",
-                "--add-modules", modules.joinToString(","),
-                "--output", jreDir.absolutePath,
-                "--strip-debug",
-                "--compress", "2",
-                "--no-header-files",
-                "--no-man-pages"
-            )
-        }
-    }
-    
-    from(jreDir) {
-        into("jre")
-    }
-    from("build/libs") {
-        include("moyue-backend.jar")
-        into("app")
-    }
-    
-    archiveFileName.set("moyue-jre-${version}.zip")
-    destinationDirectory.set(file("$buildDir/dist"))
-}
- 
-// 完整构建任务
-tasks.register("fullBuild") {
-    group = "build"
-    description = "完整构建（jlink + 瘦身打包）"
-    dependsOn("jar", "jlinkZip")
-}
- 
-// 清理任务
-tasks.register("cleanDist") {
-    group = "build"
-    description = "清理构建产物"
-    doLast {
-        delete("$buildDir/dist")
-        delete("$buildDir/custom-jre")
-        delete("$buildDir/heap-dump.hprof")
-    }
 }
