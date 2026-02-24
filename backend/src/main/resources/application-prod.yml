@@ -1,51 +1,104 @@
-# ============================================================================
-# 生产环境配置
-# ============================================================================
+# ============================================
+# Moyue Reader - 生产环境配置
+# Spring Boot 4.0.3 + Kotlin 2.3.10
+# ============================================
  
 spring:
-  profiles:
-    group:
-      prod: prod
-  
-  # 生产环境使用 SQLite
+  # ==================== 数据库配置 ====================
   datasource:
-    url: jdbc:sqlite:${moyue.data.home:~/MoyueData}/moyue.db
+    url: jdbc:sqlite:./moyue-prod.db
     driver-class-name: org.sqlite.JDBC
     hikari:
       maximum-pool-size: 20
-      minimum-idle: 5
+      minimum-idle: 10
       connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
   
-  # 生产环境不显示 SQL
+  # ==================== JPA 配置 ====================
   jpa:
+    hibernate:
+      ddl-auto: validate  # 生产环境使用 validate
     show-sql: false
-  
-  # 生产环境禁用 devtools
-  devtools:
-    livereload:
-      enabled: false
-    restart:
-      enabled: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc.batch_size: 100
  
-# 日志级别（生产环境更精简）
+# ==================== 服务器配置 ====================
+server:
+  port: ${SERVER_PORT:8080}
+  tomcat:
+    threads:
+      max: 300
+      min-spare: 20
+    max-connections: 10000
+    accept-count: 200
+ 
+# ==================== 日志配置 ====================
 logging:
   level:
-    root: INFO
+    root: WARN
     com.moyue: INFO
-    org.springframework: WARN
-    org.hibernate: WARN
+    org.springframework.web: WARN
+    org.hibernate.SQL: WARN
   file:
-    max-size: 100MB
-    max-history: 90
+    name: /var/log/moyue-reader/moyue-prod.log
+    max-size: 50MB
+    max-history: 60
+    total-size-cap: 5GB
  
-# OkHttp 生产环境禁用日志
-okhttp:
-  logging:
-    enabled: false
- 
-# 安全配置（生产环境）
+# ==================== Moyue 配置 ====================
 moyue:
   security:
-    default-level: standard  # 生产环境使用标准模式
     jwt:
-      expiration: 604800  # 7天
+      secret: ${JWT_SECRET}  # 必须从环境变量设置
+    default-level: standard  # 生产环境使用标准模式
+  
+  # ==================== 缓存配置 ====================
+  cache:
+    enabled: true
+    default-ttl: 7200  # 生产环境长一些
+    max-size: 50000
+  
+  # ==================== 性能配置 ====================
+  performance:
+    enable-compression: true
+    enable-gzip: true
+    max-connections: 200
+  
+  # ==================== 书源配置 ====================
+  book-source:
+    max-concurrent-search: 10
+    request-timeout: 15
+    search-timeout: 45
+    max-retries: 2
+    enable-cache: true
+    cache-ttl: 7200
+  
+  # ==================== OkHttp 配置 ====================
+  okhttp:
+    connect-timeout: 15
+    read-timeout: 45
+    write-timeout: 45
+    call-timeout: 90
+  
+  # ==================== 异步配置 ====================
+  async:
+    core-pool-size: 16
+    max-pool-size: 50
+    queue-capacity: 5000
+  
+  # ==================== Swagger 配置 ====================
+  swagger:
+    enabled: false  # 生产环境禁用 Swagger
+ 
+# ==================== Actuator 配置 ====================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: never
