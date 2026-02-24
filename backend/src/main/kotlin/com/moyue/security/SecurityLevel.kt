@@ -1,74 +1,128 @@
 package com.moyue.security
  
+/**
+ * 安全等级枚举
+ *
+ * Spring Boot 4.0.3 + Kotlin 2.3.10
+ *
+ * 安全等级说明：
+ * - TRUSTED: 受信模式，允许所有操作（仅限可信环境）
+ * - STANDARD: 标准模式，安全性与功能性平衡（推荐）
+ * - COMPATIBLE: 兼容模式，最大程度兼容书源（安全性较低）
+ *
+ * @author Moyue Team
+ * @since 4.0.3
+ */
 enum class SecurityLevel(
-    val displayName: String,
+    /**
+     * 等级名称
+     */
+    val name: String,
+    
+    /**
+     * 描述
+     */
     val description: String,
-    val riskLevel: Int
+    
+    /**
+     * 是否允许网络访问
+     */
+    val allowsNetwork: Boolean,
+    
+    /**
+     * 是否允许文件系统访问
+     */
+    val allowsFileSystem: Boolean,
+    
+    /**
+     * 是否允许系统命令执行
+     */
+    val allowsSystem: Boolean,
+    
+    /**
+     * 是否允许反射
+     */
+    val allowsReflection: Boolean,
+    
+    /**
+     * 是否允许原生代码加载
+     */
+    val allowsNative: Boolean,
+    
+    /**
+     * 最大执行时间（秒）
+     */
+    val maxExecutionTime: Long,
+    
+    /**
+     * 是否启用沙箱
+     */
+    val sandboxEnabled: Boolean
 ) {
-    STANDARD(
-        displayName = "标准模式",
-        description = "最安全，仅允许基本网络请求和 DOM 操作",
-        riskLevel = 0
-    ),
-    COMPATIBLE(
-        displayName = "兼容模式",
-        description = "允许文件操作和 Socket，中等安全",
-        riskLevel = 1
-    ),
+    
+    /**
+     * 受信模式
+     * 允许所有操作，无安全限制
+     */
     TRUSTED(
-        displayName = "信任模式",
-        description = "允许反射等高级功能，最低安全",
-        riskLevel = 2
+        name = "trusted",
+        description = "受信模式 - 允许所有操作（仅限可信环境）",
+        allowsNetwork = true,
+        allowsFileSystem = true,
+        allowsSystem = true,
+        allowsReflection = true,
+        allowsNative = true,
+        maxExecutionTime = Long.MAX_VALUE,
+        sandboxEnabled = false
+    ),
+    
+    /**
+     * 标准模式
+     * 安全性与功能性平衡
+     */
+    STANDARD(
+        name = "standard",
+        description = "标准模式 - 安全性与功能性平衡（推荐）",
+        allowsNetwork = true,
+        allowsFileSystem = false,
+        allowsSystem = false,
+        allowsReflection = false,
+        allowsNative = false,
+        maxExecutionTime = 30,
+        sandboxEnabled = true
+    ),
+    
+    /**
+     * 兼容模式
+     * 最大程度兼容书源，安全性较低
+     */
+    COMPATIBLE(
+        name = "compatible",
+        description = "兼容模式 - 最大程度兼容书源（安全性较低）",
+        allowsNetwork = true,
+        allowsFileSystem = true,
+        allowsSystem = false,
+        allowsReflection = true,
+        allowsNative = false,
+        maxExecutionTime = 60,
+        sandboxEnabled = true
     );
     
     companion object {
+        private val LEVELS = values().associateBy { it.name.uppercase() }
+        
         /**
-         * 根据名称查找安全级别
+         * 根据名称获取安全等级
          */
-        fun fromName(name: String): SecurityLevel? {
-            return values().find { it.name.equals(name, ignoreCase = true) }
+        fun fromName(name: String): SecurityLevel {
+            return LEVELS[name.uppercase()] ?: STANDARD
         }
         
         /**
-         * 判断 level1 是否比 level2 风险更高
+         * 获取所有安全等级
          */
-        fun isHigherThan(level1: SecurityLevel, level2: SecurityLevel): Boolean {
-            return level1.riskLevel > level2.riskLevel
+        fun allLevels(): List<SecurityLevel> {
+            return values().toList()
         }
-        
-        /**
-         * 判断两个级别是否相同
-         */
-        fun isSameLevel(level1: SecurityLevel, level2: SecurityLevel): Boolean {
-            return level1 == level2
-        }
-    }
-    
-    /**
-     * 是否可以升级（允许升级到更高风险级别）
-     */
-    fun canUpgrade(): Boolean {
-        return this != TRUSTED
-    }
-    
-    /**
-     * 是否可以降级（允许降级到更低风险级别）
-     */
-    fun canDowngrade(): Boolean {
-        return this != STANDARD
-    }
-    
-    /**
-     * 获取下一级别的枚举值
-     */
-    fun nextLevel(): SecurityLevel? {
-        return values().getOrNull(this.ordinal + 1)
-    }
-    
-    /**
-     * 获取上一级别的枚举值
-     */
-    fun previousLevel(): SecurityLevel? {
-        return values().getOrNull(this.ordinal - 1)
     }
 }
