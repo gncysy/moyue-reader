@@ -1,130 +1,244 @@
-# ============================================================================
-# Moyue Reader 后端主配置文件
-# Spring Boot 4.0.3
-# ============================================================================
+# ============================================
+# Moyue Reader - Spring Boot 4.0.3 + Kotlin 2.3.10
+# ============================================
  
+# ==================== 应用配置 ====================
 spring:
   application:
-    name: moyue-backend
+    name: moyue-reader
   
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:dev}
+    active: dev
   
-  # ==================== 数据源配置 ====================
+  # ==================== 数据库配置 ====================
   datasource:
-    url: jdbc:sqlite:${moyue.data.home:~/MoyueData}/moyue.db
+    # SQLite 数据库（开发环境）
+    url: jdbc:sqlite:moyue.db
     driver-class-name: org.sqlite.JDBC
+    username: 
+    password: 
+    
+    # HikariCP 连接池配置
     hikari:
       maximum-pool-size: 10
-      minimum-idle: 2
+      minimum-idle: 5
       connection-timeout: 30000
       idle-timeout: 600000
       max-lifetime: 1800000
+      pool-name: MoyueHikariPool
+      auto-commit: false
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+      connection-test-query: SELECT 1
   
   # ==================== JPA 配置 ====================
   jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
     hibernate:
-      ddl-auto: ${DDL_AUTO:update}
-    show-sql: ${SHOW_SQL:false}
-    open-in-view: false
+      ddl-auto: update
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+        implicit-strategy: org.springframework.boot.orm.jpa.hibernate.SpringImplicitNamingStrategy
+    show-sql: false
     properties:
       hibernate:
-        dialect: org.hibernate.community.dialect.SQLiteDialect
-        format_sql: true
-        use_sql_comments: true
-        jdbc:
-          batch_size: 50
-          order_inserts: true
-          order_updates: true
+        format_sql: false
+        use_sql_comments: false
+        cache.use_second_level_cache: false
+        cache.use_query_cache: false
+        generate_statistics: false
+        jdbc.batch_size: 50
+        order_inserts: true
+        order_updates: true
+        connection.handling_mode: DELAYED_ACQUISITION_AND_RELEASE_AFTER_STATEMENT
+    open-in-view: false
+  
+  # ==================== Web 配置 ====================
+  web:
+    resources:
+      static-locations: classpath:/static/
+      cache:
+        period: 3600
+    mvc:
+      throw-exception-if-no-handler-found: true
+      pathmatch:
+        matching-strategy: ant_path_matcher
+  
+  # ==================== 文件上传配置 ====================
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+      file-size-threshold: 0
+      location: ./uploads
   
   # ==================== Jackson 配置 ====================
   jackson:
-    json:
-      read:
-        date-format: yyyy-MM-dd HH:mm:ss
-        time-zone: GMT+8
-      write:
-        date-format: yyyy-MM-dd HH:mm:ss
-        time-zone: GMT+8
+    default-property-inclusion: non_null
     serialization:
       write-dates-as-timestamps: false
       indent-output: false
     deserialization:
       fail-on-unknown-properties: false
+      accept-single-value-as-array: true
   
-  # ==================== 缓存配置 ====================
+  # ==================== Cache 配置 ====================
   cache:
     type: caffeine
     caffeine:
-      spec: maximumSize=1000,expireAfterWrite=3600s
-  
-  # ==================== Devtools 配置 ====================
-  devtools:
-    livereload:
-      enabled: ${LIVERELOAD_ENABLED:true}
-    restart:
-      enabled: ${RESTART_ENABLED:true}
-  
-  # ==================== Servlet 编码配置 ====================
+      spec: maximumSize=10000,expireAfterWrite=1h
+ 
+# ==================== 服务器配置 ====================
+server:
+  port: 8080
   servlet:
+    context-path: /
     encoding:
       charset: UTF-8
       enabled: true
       force: true
-  
-  # ==================== 持久化配置 ====================
-  persistence:
-    exceptiontranslation:
-      enabled: true
- 
-# ==================== Web 错误配置 ====================
-spring:
-  web:
-    error:
-      include-message: always
-      include-binding-errors: always
-      include-stacktrace: on-param
-      include-exception: false
- 
-# ==================== 安全配置 ====================
-spring:
-  security:
-    user:
-      name: ${SECURITY_USER:admin}
-      password: ${SECURITY_PASSWORD:admin123}
-    filter:
-      order: 10
- 
-# ==================== 服务器配置 ====================
-server:
-  port: ${SERVER_PORT:8080}
-  address: ${SERVER_ADDRESS:127.0.0.1}
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,application/javascript,application/json
+    min-response-size: 1024
   shutdown: graceful
   tomcat:
     threads:
       max: 200
       min-spare: 10
-      accept-count: 100
-    connection-timeout: 20000
     max-connections: 8192
-  compression:
+    accept-count: 100
+    connection-timeout: 20000
+ 
+# ==================== Moyue 应用配置 ====================
+moyue:
+  # ==================== 应用信息 ====================
+  app:
+    name: Moyue Reader
+    version: 0.1.0
+    description: Moyue Reader - 开源阅读器
+  
+  # ==================== 安全配置 ====================
+  security:
     enabled: true
-    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+    jwt:
+      enabled: true
+      secret: ${JWT_SECRET:}
+      expiration: 86400
+      refresh-token-expiration: 604800
+    cors:
+      enabled: true
+      allowed-origins: "*"
+      allowed-methods: "*"
+      allowed-headers: "*"
+      allow-credentials: true
+      max-age: 3600
+    default-level: standard  # trusted, standard, compatible
+  
+  # ==================== 缓存配置 ====================
+  cache:
+    enabled: true
+    default-ttl: 3600
+    max-size: 10000
+    initial-capacity: 100
+  
+  # ==================== 书源配置 ====================
+  book-source:
+    max-concurrent-search: 5
+    request-timeout: 10
+    search-timeout: 30
+    max-retries: 3
+    enable-cache: true
+    cache-ttl: 3600
+  
+  # ==================== 性能配置 ====================
+  performance:
+    enable-compression: true
+    enable-gzip: true
+    min-response-size: 1024
+    max-connections: 100
+  
+  # ==================== 日志配置 ====================
+  logging:
+    level: INFO
+    request:
+      enabled: true
+      max-payload-length: 1000
+      include-client-info: true
+      include-query-string: true
+      include-payload: true
+      include-headers: false
+  
+  # ==================== OkHttp 配置 ====================
+  okhttp:
+    connect-timeout: 10
+    read-timeout: 30
+    write-timeout: 30
+    call-timeout: 60
+    max-idle-connections: 5
+    keep-alive-duration: 300
+    follow-redirects: true
+    follow-ssl-redirects: true
+    retry-on-connection-failure: true
+  
+  # ==================== 异步配置 ====================
+  async:
+    core-pool-size: 8
+    max-pool-size: 20
+    queue-capacity: 1000
+    thread-name-prefix: async-
+    keep-alive-seconds: 60
+    allow-core-thread-timeout: true
+    wait-for-tasks-to-complete-on-shutdown: true
+    await-termination-seconds: 60
+  
+  # ==================== 线程池配置 ====================
+  thread-pool:
+    search:
+      core-size: 5
+      max-size: 10
+      queue-capacity: 100
+    http:
+      core-size: 10
+      max-size: 50
+      queue-capacity: 500
+    cache:
+      core-size: 2
+      max-size: 5
+      queue-capacity: 50
+    scheduler:
+      core-size: 3
+      max-size: 10
+      queue-capacity: 100
+  
+  # ==================== Swagger 配置 ====================
+  swagger:
+    enabled: true
+    title: Moyue Reader API
+    description: Moyue Reader 后端 API 文档
+    version: 0.1.0
+    contact:
+      name: Moyue Team
+      email: 
+      url: 
+    license:
+      name: MIT
+      url: 
  
 # ==================== 日志配置 ====================
 logging:
   level:
-    root: ${LOG_LEVEL_ROOT:INFO}
-    com.moyue: ${LOG_LEVEL_APP:INFO}
-    org.springframework: ${LOG_LEVEL_SPRING:WARN}
-    org.hibernate: ${LOG_LEVEL_HIBERNATE:WARN}
-    tools.jackson: WARN
+    root: INFO
+    com.moyue: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
   file:
-    name: ${moyue.data.home:~/MoyueData}/logs/moyue-backend.log
-    max-size: 50MB
+    name: logs/moyue-reader.log
+    max-size: 10MB
     max-history: 30
     total-size-cap: 1GB
  
@@ -133,60 +247,30 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
       base-path: /actuator
   endpoint:
     health:
       show-details: when-authorized
       probes:
-        enabled: false  # 默认不启用探针
+        enabled: true
+    metrics:
+      enabled: true
   metrics:
     export:
-      simple:
+      prometheus:
         enabled: true
+    tags:
+      application: ${spring.application.name}
  
-# ==================== 应用自定义配置 ====================
-moyue:
-  data:
-    home: ${MOYUE_DATA_HOME:~/MoyueData}
-  
-  security:
-    default-level: ${MOYUE_SECURITY_LEVEL:standard}  # standard | compatible | trusted
-    jwt:
-      secret: ${JWT_SECRET:moyue-secret-key-change-in-production}
-      expiration: ${JWT_EXPIRATION:86400}  # 秒
-  
-  performance:
-    cache:
-      enabled: true
-      ttl: 3600
-      max-size: 1000
-  
-  book-source:
-    max-concurrent-search: 5
-    search-timeout: 30
-    request-timeout: 10
-    max-sources: 100
- 
-# ==================== OkHttp 配置 ====================
-okhttp:
-  connect-timeout: 10
-  read-timeout: 30
-  write-timeout: 10
-  connection-pool:
-    max-idle: 10
-    keep-alive: 5
-  logging:
-    enabled: ${OKHTTP_LOG_ENABLED:false}
-    level: ${OKHTTP_LOG_LEVEL:BASIC}
-  proxy:
-    enabled: ${PROXY_ENABLED:false}
-    host: ${PROXY_HOST:}
-    port: ${PROXY_PORT:8080}
- 
-# ==================== 异步任务配置 ====================
-async:
-  core-pool-size: 5
-  max-pool-size: 10
-  queue-capacity: 100
-  thread-name-prefix: async-
+# ==================== Actuator 健康检查 ====================
+springdoc:
+  api-docs:
+    enabled: true
+    path: /api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  show-actuator: true
