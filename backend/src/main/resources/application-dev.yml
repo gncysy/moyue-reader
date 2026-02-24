@@ -1,40 +1,59 @@
+# ============================================================================
 # 开发环境配置
-
+# ============================================================================
+ 
 spring:
+  profiles:
+    group:
+      dev: dev
+      test: dev
+  
+  # 开发环境使用 H2 内存数据库（便于测试）
   datasource:
     url: jdbc:h2:mem:devdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  
   h2:
     console:
       enabled: true
-
+      path: /h2-console
+      settings:
+        web-allow-others: false
+  
+  # 开发环境显示 SQL
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  
+  # 开发环境启用 devtools
+  devtools:
+    livereload:
+      enabled: true
+    restart:
+      enabled: true
+ 
+# 日志级别（开发环境更详细）
 logging:
   level:
     root: DEBUG
     com.moyue: DEBUG
     org.springframework: INFO
     org.hibernate: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
-
-moyue:
-  security:
-    default-level: compatible  # 开发环境使用兼容模式，方便调试
-  
-  performance:
-    cache:
-      enabled: false  # 开发环境禁用缓存
-      
-# 开发环境 OkHttp 配置
+    tools.jackson: DEBUG
+ 
+# OkHttp 开发环境启用日志
 okhttp:
-  connect-timeout: 5
-  read-timeout: 10
-  write-timeout: 5
   logging:
     enabled: true
-    level: BODY  # 开发环境打印完整请求体
-
-# 开发环境异步任务配置
-async:
-  core-pool-size: 2
-  max-pool-size: 4
-  queue-capacity: 20
+    level: BODY
+ 
+# 安全配置（开发环境）
+moyue:
+  security:
+    default-level: compatible  # 开发环境使用兼容模式
+    jwt:
+      expiration: 86400
