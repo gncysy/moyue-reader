@@ -1,829 +1,442 @@
 package com.moyue.source
-
-import com.moyue.model.Book
-import com.moyue.model.BookChapter
-import com.moyue.model.BookSource
-import com.moyue.service.CacheService
-import com.moyue.service.PreferenceService
-import com.moyue.util.*
-import okhttp3.*
+ 
+import com.moyue.engine.RhinoEngine
+import com.moyue.security.SafeJsExtensions
+import com.moyue.security.SecurityLevel
+import com.moyue.security.SecurityPolicy
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import org.jsoup.select.Elements
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import java.io.File
-import java.net.URLEncoder
-import java.text.SimpleDateFormat
-import java.util.*
-import java.util.concurrent.ConcurrentHashMap
-
+ 
 /**
- * 书源 JavaScript 扩展 API
- * 
- * 完全兼容 Legado 的 java.* 接口
- * 提供网络请求、加密解密、文件操作、Cookie 管理等功能
- * 
- * @author Moyue
- * @since 1.0.0
+ * JavaScript 扩展函数提供者
+ *
+ * Spring Boot 4.0.3 + Kotlin 2.3.10
+ *
+ * 功能：
+ * - 提供书源规则所需的 JavaScript 扩展函数
+ * - 兼容开源阅读（Legado）的扩展函数
+ * - 支持 Android Compat 接口
+ *
+ * @author Moyue Team
+ * @since 4.0.3
  */
 @Component
 class JsExtensions(
-    private val okHttpClient: OkHttpClient,
-    private val cacheService: CacheService,
-    private val preferenceService: PreferenceService
+    private val rhinoEngine: RhinoEngine,
+    private val securityPolicy: SecurityPolicy = SecurityPolicy.forLevel(SecurityLevel.STANDARD)
 ) {
     
     private val logger = LoggerFactory.getLogger(JsExtensions::class.java)
     
-    // 线程本地存储，保存当前执行上下文
-    private val contextHolder = ThreadLocal<ExecutionContext>()
-    
     /**
-     * 执行上下文
+     * 获取所有扩展函数
      */
-    data class ExecutionContext(
-        var content: Any? = null,
-        var baseUrl: String = "",
-        var rule: Any? = null,
-        var book: Book? = null,
-        var chapter: BookChapter? = null,
-        var source: BookSource? = null,
-        var variable: String? = null
-    )
-    
-    /**
-     * 设置执行上下文
-     */
-    fun setContext(ctx: ExecutionContext) {
-        contextHolder.set(ctx)
+    fun getExtensions(): Map<String, Any> {
+        return mapOf(
+            // 字符串处理
+            "base64Encode" to ::base64Encode,
+            "base64Decode" to ::base64Decode,
+            "md5" to ::md5,
+            "sha1" to ::sha1,
+            "sha256" to ::sha256,
+            "urlEncode" to ::urlEncode,
+            "urlDecode" to ::urlDecode,
+            
+            // 加密
+            "aesEncode" to ::aesEncode,
+            "aesDecode" to ::aesDecode,
+            "desEncode" to ::desEncode,
+            "desDecode" to ::desDecode,
+            "rsaEncode" to ::rsaEncode,
+            "rsaDecode" to ::rsaDecode,
+            
+            // 正则
+            "regexMatch" to ::regexMatch,
+            "regexMatchAll" to ::regexMatchAll,
+            "regexReplace" to ::regexReplace,
+            "regexSplit" to ::regexSplit,
+            
+            // 日期
+            "formatDate" to ::formatDate,
+            "parseDate" to ::parseDate,
+            "currentTime" to ::currentTime,
+            
+            // 字符串
+            "substring" to ::substring,
+            "substringBefore" to ::substringBefore,
+            "substringAfter" to ::substringAfter,
+            "substringBetween" to ::substringBetween,
+            "trim" to ::trim,
+            "replaceAll" to ::replaceAll,
+            "replaceFirst" to ::replaceFirst,
+            "split" to ::split,
+            "join" to ::join,
+            
+            // 集合
+            "map" to ::map,
+            "filter" to ::filter,
+            "reduce" to ::reduce,
+            "find" to ::find,
+            "contains" to ::contains,
+            "sortBy" to ::sortBy,
+            "reverse" to ::reverse,
+            "distinct" to ::distinct,
+            
+            // JSON
+            "jsonParse" to ::jsonParse,
+            "jsonStringify" to ::jsonStringify,
+            
+            // HTML 解析
+            "parseHtml" to ::parseHtml,
+            "selectElements" to ::selectElements,
+            "getElementText" to ::getElementText,
+            "getElementAttr" to ::getElementAttr,
+            "getHtml" to ::getHtml,
+            "getAttr" to ::getAttr,
+            "getText" to ::getText,
+            "getId" to ::getId,
+            "getClass" to ::getClass,
+            "hasClass" to ::hasClass,
+            "removeAttr" to ::removeAttr,
+            "setAttr" to ::setAttr,
+            "html" to ::html,
+            "text" to ::text,
+            "attr" to ::attr,
+            
+            // 日志
+            "log" to ::log,
+            "error" to ::error,
+            "warn" to ::warn,
+            "debug" to ::debug,
+            "info" to ::info
+        )
     }
     
-    /**
-     * 清除执行上下文
-     */
-    fun clearContext() {
-        contextHolder.remove()
+    // ==================== 字符串处理 ====================
+    
+    fun base64Encode(input: String): String {
+        return String(java.util.Base64.getEncoder().encode(input.toByteArray()))
     }
     
-    /**
-     * 获取当前执行上下文
-     */
-    private fun getContext(): ExecutionContext {
-        return contextHolder.get() ?: ExecutionContext()
+    fun base64Decode(input: String): String {
+        return String(java.util.Base64.getDecoder().decode(input))
     }
     
-    // ==================== 网络请求 ====================
-    
-    /**
-     * AJAX 请求（默认 GET）
-     */
-    @JvmOverloads
-    fun ajax(url: String, headers: Map<String, String>? = null): String {
-        return get(url, headers)
+    fun md5(input: String): String {
+        val md = java.security.MessageDigest.getInstance("MD5")
+        val bytes = md.digest(input.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
     }
     
-    /**
-     * HTTP GET 请求
-     */
-    @JvmOverloads
-    fun get(url: String, headers: Map<String, String>? = null): String {
-        val requestBuilder = Request.Builder().url(url).get()
-        
-        headers?.forEach { (key, value) ->
-            requestBuilder.addHeader(key, value)
+    fun sha1(input: String): String {
+        val sha = java.security.MessageDigest.getInstance("SHA-1")
+        val bytes = sha.digest(input.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+    
+    fun sha256(input: String): String {
+        val sha = java.security.MessageDigest.getInstance("SHA-256")
+        val bytes = sha.digest(input.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+    
+    fun urlEncode(input: String): String {
+        return java.net.URLEncoder.encode(input, "UTF-8")
+    }
+    
+    fun urlDecode(input: String): String {
+        return java.net.URLDecoder.decode(input, "UTF-8")
+    }
+    
+    // ==================== 加密 ====================
+    
+    fun aesEncode(data: String, key: String, iv: String? = null): String {
+        val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+        val keySpec = javax.crypto.spec.SecretKeySpec(key.toByteArray(), "AES")
+        val ivSpec = if (iv != null) {
+            javax.crypto.spec.IvParameterSpec(iv.toByteArray())
+        } else {
+            javax.crypto.spec.IvParameterSpec(ByteArray(16))
         }
-        
-        // 默认 User-Agent
-        if (headers?.containsKey("User-Agent") != true) {
-            requestBuilder.addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        }
-        
-        val request = requestBuilder.build()
-        return executeRequest(request)
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, keySpec, ivSpec)
+        val encrypted = cipher.doFinal(data.toByteArray())
+        return java.util.Base64.getEncoder().encodeToString(encrypted)
     }
     
-    /**
-     * HTTP POST 请求（表单）
-     */
-    @JvmOverloads
-    fun post(url: String, body: String, headers: Map<String, String>? = null): String {
-        val mediaType = "application/x-www-form-urlencoded; charset=utf-8".toMediaType()
-        val requestBody = body.toRequestBody(mediaType)
-        
-        val requestBuilder = Request.Builder().url(url).post(requestBody)
-        
-        headers?.forEach { (key, value) ->
-            requestBuilder.addHeader(key, value)
+    fun aesDecode(data: String, key: String, iv: String? = null): String {
+        val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+        val keySpec = javax.crypto.spec.SecretKeySpec(key.toByteArray(), "AES")
+        val ivSpec = if (iv != null) {
+            javax.crypto.spec.IvParameterSpec(iv.toByteArray())
+        } else {
+            javax.crypto.spec.IvParameterSpec(ByteArray(16))
         }
-        
-        return executeRequest(requestBuilder.build())
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec, ivSpec)
+        val decoded = java.util.Base64.getDecoder().decode(data)
+        return String(cipher.doFinal(decoded))
     }
     
-    /**
-     * HTTP POST 请求（JSON）
-     */
-    fun postJson(url: String, json: String, headers: Map<String, String>? = null): String {
-        val mediaType = "application/json; charset=utf-8".toMediaType()
-        val requestBody = json.toRequestBody(mediaType)
-        
-        val requestBuilder = Request.Builder().url(url).post(requestBody)
-        
-        headers?.forEach { (key, value) ->
-            requestBuilder.addHeader(key, value)
-        }
-        
-        return executeRequest(requestBuilder.build())
+    fun desEncode(data: String, key: String): String {
+        val cipher = javax.crypto.Cipher.getInstance("DES/ECB/PKCS5Padding")
+        val keySpec = javax.crypto.spec.SecretKeySpec(key.toByteArray(), "DES")
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, keySpec)
+        val encrypted = cipher.doFinal(data.toByteArray())
+        return java.util.Base64.getEncoder().encodeToString(encrypted)
     }
     
-    /**
-     * HTTP PUT 请求
-     */
-    fun put(url: String, body: String, headers: Map<String, String>? = null): String {
-        val requestBuilder = Request.Builder().url(url).put(body.toRequestBody())
-        
-        headers?.forEach { (key, value) ->
-            requestBuilder.addHeader(key, value)
-        }
-        
-        return executeRequest(requestBuilder.build())
+    fun desDecode(data: String, key: String): String {
+        val cipher = javax.crypto.Cipher.getInstance("DES/ECB/PKCS5Padding")
+        val keySpec = javax.crypto.spec.SecretKeySpec(key.toByteArray(), "DES")
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, keySpec)
+        val decoded = java.util.Base64.getDecoder().decode(data)
+        return String(cipher.doFinal(decoded))
     }
     
-    /**
-     * HTTP DELETE 请求
-     */
-    fun delete(url: String, headers: Map<String, String>? = null): String {
-        val requestBuilder = Request.Builder().url(url).delete()
-        
-        headers?.forEach { (key, value) ->
-            requestBuilder.addHeader(key, value)
-        }
-        
-        return executeRequest(requestBuilder.build())
+    fun rsaEncode(data: String, key: String): String {
+        val publicKey = java.security.KeyFactory.getInstance("RSA")
+            .generatePublic(
+                java.security.spec.X509EncodedKeySpec(
+                    java.util.Base64.getDecoder().decode(key)
+                )
+            )
+        val cipher = javax.crypto.Cipher.getInstance("RSA/ECB/PKCS1Padding")
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, publicKey)
+        val encrypted = cipher.doFinal(data.toByteArray())
+        return java.util.Base64.getEncoder().encodeToString(encrypted)
     }
     
-    /**
-     * 执行 HTTP 请求
-     */
-    private fun executeRequest(request: Request): String {
+    fun rsaDecode(data: String, key: String): String {
+        val privateKey = java.security.KeyFactory.getInstance("RSA")
+            .generatePrivate(
+                java.security.spec.PKCS8EncodedKeySpec(
+                    java.util.Base64.getDecoder().decode(key)
+                )
+            )
+        val cipher = javax.crypto.Cipher.getInstance("RSA/ECB/PKCS1Padding")
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, privateKey)
+        val decoded = java.util.Base64.getDecoder().decode(data)
+        return String(cipher.doFinal(decoded))
+    }
+    
+    // ==================== 正则 ====================
+    
+    fun regexMatch(regex: String, input: String): Boolean {
+        return Regex(regex).containsMatchIn(input)
+    }
+    
+    fun regexMatchAll(regex: String, input: String): List<String> {
+        return Regex(regex).findAll(input).map { it.value }.toList()
+    }
+    
+    fun regexReplace(regex: String, replacement: String, input: String): String {
+        return input.replace(Regex(regex), replacement)
+    }
+    
+    fun regexSplit(regex: String, input: String): List<String> {
+        return input.split(Regex(regex))
+    }
+    
+    // ==================== 日期 ====================
+    
+    fun formatDate(timestamp: Long, pattern: String = "yyyy-MM-dd HH:mm:ss"): String {
+        return java.text.SimpleDateFormat(pattern).format(java.util.Date(timestamp))
+    }
+    
+    fun formatDate(timestamp: Number, pattern: String = "yyyy-MM-dd HH:mm:ss"): String {
+        return formatDate(timestamp.toLong(), pattern)
+    }
+    
+    fun formatDate(timestamp: String, pattern: String = "yyyy-MM-dd HH:mm:ss"): String {
         return try {
-            okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    logger.warn("HTTP 请求失败: ${request.url} - ${response.code}")
-                    throw RuntimeException("HTTP ${response.code}: ${response.message}")
-                }
-                response.body?.string() ?: ""
-            }
+            formatDate(timestamp.toLong(), pattern)
         } catch (e: Exception) {
-            logger.error("HTTP 请求失败: ${request.url}", e)
-            throw RuntimeException("Request failed: ${e.message}", e)
-        }
-    }
-    
-    /**
-     * 获取原始 Response 对象（需要手动关闭）
-     * 
-     * 警告：调用者必须手动关闭 Response
-     */
-    fun getResponse(url: String, headers: Map<String, String>? = null): Response {
-        val requestBuilder = Request.Builder().url(url)
-        
-        headers?.forEach { (key, value) ->
-            requestBuilder.addHeader(key, value)
-        }
-        
-        logger.warn("使用了 getResponse，请确保手动关闭 Response")
-        return okHttpClient.newCall(requestBuilder.build()).execute()
-    }
-    
-    // ==================== 编码加密 ====================
-    
-    /**
-     * Base64 编码
-     */
-    fun base64Encode(str: String): String {
-        return try {
-            Base64.getEncoder().encodeToString(str.toByteArray())
-        } catch (e: Exception) {
-            logger.error("Base64 编码失败", e)
             ""
         }
     }
     
-    /**
-     * Base64 解码
-     */
-    fun base64Decode(str: String): String {
-        return try {
-            String(Base64.getDecoder().decode(str))
-        } catch (e: Exception) {
-            logger.error("Base64 解码失败", e)
-            ""
+    fun parseDate(dateStr: String, pattern: String = "yyyy-MM-dd HH:mm:ss"): Long {
+        return java.text.SimpleDateFormat(pattern).parse(dateStr).time
+    }
+    
+    fun currentTime(): Long {
+        return System.currentTimeMillis()
+    }
+    
+    // ==================== 字符串 ====================
+    
+    fun substring(str: String, start: Int, end: Int = str.length): String {
+        return str.substring(start, end.coerceAtMost(str.length))
+    }
+    
+    fun substringBefore(str: String, separator: String): String {
+        return str.substringBefore(separator)
+    }
+    
+    fun substringAfter(str: String, separator: String): String {
+        return str.substringAfter(separator)
+    }
+    
+    fun substringBetween(str: String, start: String, end: String): String {
+        return str.substringAfter(start).substringBeforeLast(end)
+    }
+    
+    fun trim(str: String): String {
+        return str.trim()
+    }
+    
+    fun replaceAll(str: String, target: String, replacement: String): String {
+        return str.replace(target, replacement)
+    }
+    
+    fun replaceFirst(str: String, target: String, replacement: String): String {
+        return str.replaceFirst(target, replacement)
+    }
+    
+    fun split(str: String, delimiter: String): List<String> {
+        return str.split(delimiter)
+    }
+    
+    fun join(list: List<String>, delimiter: String): String {
+        return list.joinToString(delimiter)
+    }
+    
+    // ==================== 集合 ====================
+    
+    fun <T, R> map(list: List<T>, func: (T) -> R): List<R> {
+        return list.map(func)
+    }
+    
+    fun <T> filter(list: List<T>, func: (T) -> Boolean): List<T> {
+        return list.filter(func)
+    }
+    
+    fun <T, R> reduce(list: List<T>, func: (R?, T) -> R, initial: R? = null): R? {
+        var acc = initial
+        for (item in list) {
+            acc = func(acc, item)
         }
+        return acc
     }
     
-    /**
-     * MD5 加密
-     */
-    fun md5Encode(str: String): String {
-        return MD5Utils.md5Encode(str)
+    fun <T> find(list: List<T>, func: (T) -> Boolean): T? {
+        return list.find(func)
     }
     
-    /**
-     * SHA1 加密
-     */
-    fun sha1Encode(str: String): String {
-        return MD5Utils.sha1Encode(str)
+    fun <T> contains(list: List<T>, item: T): Boolean {
+        return list.contains(item)
     }
     
-    /**
-     * AES 解密
-     */
-    fun aesDecodeToString(data: String, key: String, iv: String): String {
-        return AESUtils.decodeToString(data, key, iv)
+    fun <T> sortBy(list: List<T>, func: (T) -> Comparable<*>): List<T> {
+        return list.sortedBy(func)
     }
     
-    /**
-     * AES 加密
-     */
-    fun aesEncodeToString(data: String, key: String, iv: String): String {
-        return AESUtils.encodeToString(data, key, iv)
+    fun <T> reverse(list: List<T>): List<T> {
+        return list.reversed()
     }
     
-    /**
-     * RSA 解密
-     */
-    fun rsaDecodeToString(data: String, key: String): String {
-        return RSAUtils.decodeToString(data, key)
+    fun <T> distinct(list: List<T>): List<T> {
+        return list.distinct()
     }
     
-    /**
-     * RSA 加密
-     */
-    fun rsaEncodeToString(data: String, key: String): String {
-        return RSAUtils.encodeToString(data, key)
-    }
-    
-    /**
-     * 3DES 解密
-     */
-    fun desDecodeToString(data: String, key: String): String {
-        return DESUtils.decodeToString(data, key)
-    }
-    
-    /**
-     * 3DES 加密
-     */
-    fun desEncodeToString(data: String, key: String): String {
-        return DESUtils.encodeToString(data, key)
-    }
-    
-    // ==================== 文件操作 ====================
-    
-    /**
-     * 获取工作目录
-     */
-    private fun getWorkDir(): String {
-        val homeDir = System.getProperty("user.home")
-        return File(homeDir, "MoyueData").absolutePath
-    }
-    
-    /**
-     * 获取缓存目录
-     */
-    fun getCacheDir(): String {
-        val dir = File(getWorkDir(), "cache")
-        if (!dir.exists()) dir.mkdirs()
-        return dir.absolutePath
-    }
-    
-    /**
-     * 获取文件目录
-     */
-    fun getFilesDir(): String {
-        val dir = File(getWorkDir(), "files")
-        if (!dir.exists()) dir.mkdirs()
-        return dir.absolutePath
-    }
-    
-    /**
-     * 获取外部文件目录
-     */
-    fun getExternalFilesDir(): String {
-        return getFilesDir()
-    }
-    
-    /**
-     * 读取文件
-     * 
-     * 限制：只能在 MoyueData 目录下操作
-     */
-    fun getFile(path: String): ByteArray? {
-        return try {
-            validatePath(path)
-            File(path).readBytes()
-        } catch (e: Exception) {
-            logger.error("读取文件失败: $path", e)
-            null
-        }
-    }
-    
-    /**
-     * 写入文件
-     * 
-     * 限制：只能在 MoyueData 目录下操作
-     */
-    fun putFile(path: String, data: ByteArray) {
-        try {
-            validatePath(path)
-            val file = File(path)
-            file.parentFile?.mkdirs()
-            file.writeBytes(data)
-        } catch (e: Exception) {
-            logger.error("写入文件失败: $path", e)
-            throw RuntimeException("写入文件失败: ${e.message}", e)
-        }
-    }
-    
-    /**
-     * 删除文件
-     * 
-     * 限制：只能在 MoyueData 目录下操作
-     */
-    fun deleteFile(path: String): Boolean {
-        return try {
-            validatePath(path)
-            File(path).delete()
-        } catch (e: Exception) {
-            logger.error("删除文件失败: $path", e)
-            false
-        }
-    }
-    
-    /**
-     * 检查文件是否存在
-     * 
-     * 限制：只能在 MoyueData 目录下操作
-     */
-    fun fileExist(path: String): Boolean {
-        return try {
-            validatePath(path)
-            File(path).exists()
-        } catch (e: Exception) {
-            logger.error("检查文件失败: $path", e)
-            false
-        }
-    }
-    
-    /**
-     * 获取目录下的文件列表
-     * 
-     * 限制：只能在 MoyueData 目录下操作
-     */
-    fun getFiles(dir: String): List<String> {
-        return try {
-            validatePath(dir)
-            val directory = File(dir)
-            directory.list()?.toList() ?: emptyList()
-        } catch (e: Exception) {
-            logger.error("获取文件列表失败: $dir", e)
-            emptyList()
-        }
-    }
-    
-    /**
-     * 创建目录
-     * 
-     * 限制：只能在 MoyueData 目录下操作
-     */
-    fun mkdirs(path: String): Boolean {
-        return try {
-            validatePath(path)
-            File(path).mkdirs()
-        } catch (e: Exception) {
-            logger.error("创建目录失败: $path", e)
-            false
-        }
-    }
-    
-    /**
-     * 获取文件大小
-     */
-    fun getFileSize(path: String): Long {
-        return try {
-            validatePath(path)
-            File(path).length()
-        } catch (e: Exception) {
-            logger.error("获取文件大小失败: $path", e)
-            0L
-        }
-    }
-    
-    /**
-     * 获取文件最后修改时间
-     */
-    fun getFileLastModified(path: String): Long {
-        return try {
-            validatePath(path)
-            File(path).lastModified()
-        } catch (e: Exception) {
-            logger.error("获取文件修改时间失败: $path", e)
-            0L
-        }
-    }
-    
-    /**
-     * 验证文件路径安全性
-     * 防止路径遍历攻击
-     */
-    private fun validatePath(path: String) {
-        val file = File(path).canonicalFile
-        val workDir = File(getWorkDir()).canonicalFile
-        
-        if (!file.absolutePath.startsWith(workDir.absolutePath)) {
-            throw SecurityException("不允许访问工作目录之外的文件: $path")
-        }
-    }
-    
-    // ==================== Cookie 管理 ====================
-    
-    /**
-     * 获取所有 Cookie
-     */
-    fun getCookies(url: String): String {
-        return cacheService.getCookies(url)
-    }
-    
-    /**
-     * 获取指定 Cookie
-     */
-    fun getCookie(url: String, name: String): String? {
-        return cacheService.getCookie(url, name)
-    }
-    
-    /**
-     * 设置 Cookie
-     */
-    fun setCookie(url: String, cookie: String) {
-        cacheService.setCookie(url, cookie)
-    }
-    
-    /**
-     * 移除 Cookie
-     */
-    fun removeCookie(url: String) {
-        cacheService.removeCookie(url)
-    }
-    
-    /**
-     * 移除所有 Cookie
-     */
-    fun removeAllCookies() {
-        cacheService.removeAllCookies()
-    }
+    // ==================== JSON ====================
     
-    // ==================== 上下文操作 ====================
-    
-    /**
-     * 设置内容和 Base URL
-     */
-    fun setContent(content: Any?, baseUrl: String) {
-        val ctx = getContext()
-        ctx.content = content
-        ctx.baseUrl = baseUrl
-        contextHolder.set(ctx)
+    fun jsonParse(json: String): Any {
+        return com.google.gson.Gson().fromJson(json, Any::class.java)
     }
     
-    /**
-     * 获取内容
-     */
-    fun getContent(): Any? {
-        return getContext().content
+    fun jsonStringify(obj: Any): String {
+        return com.google.gson.Gson().toJson(obj)
     }
     
-    /**
-     * 获取 Base URL
-     */
-    fun getBaseUrl(): String {
-        return getContext().baseUrl
-    }
-    
-    /**
-     * 设置 Base URL
-     */
-    fun setBaseUrl(baseUrl: String) {
-        val ctx = getContext()
-        ctx.baseUrl = baseUrl
-        contextHolder.set(ctx)
-    }
-    
-    /**
-     * 获取规则
-     */
-    fun getRule(): Any? {
-        return getContext().rule
-    }
-    
-    /**
-     * 设置规则
-     */
-    fun setRule(rule: Any?) {
-        val ctx = getContext()
-        ctx.rule = rule
-        contextHolder.set(ctx)
-    }
-    
-    /**
-     * 获取书籍
-     */
-    fun getBook(): Book? {
-        return getContext().book
-    }
-    
-    /**
-     * 设置书籍
-     */
-    fun setBook(book: Book?) {
-        val ctx = getContext()
-        ctx.book = book
-        contextHolder.set(ctx)
-    }
-    
-    /**
-     * 获取章节
-     */
-    fun getChapter(): BookChapter? {
-        return getContext().chapter
-    }
-    
-    /**
-     * 设置章节
-     */
-    fun setChapter(chapter: BookChapter?) {
-        val ctx = getContext()
-        ctx.chapter = chapter
-        contextHolder.set(ctx)
-    }
-    
-    /**
-     * 获取书源
-     */
-    fun getSource(): BookSource? {
-        return getContext().source
-    }
-    
-    /**
-     * 设置书源
-     */
-    fun setSource(source: BookSource?) {
-        val ctx = getContext()
-        ctx.source = source
-        contextHolder.set(ctx)
-    }
-    
-    /**
-     * 获取变量
-     */
-    fun getVariable(): String? {
-        return getContext().variable
-    }
+    // ==================== HTML 解析 ====================
     
-    /**
-     * 设置变量
-     */
-    fun setVariable(variable: String?) {
-        val ctx = getContext()
-        ctx.variable = variable
-        contextHolder.set(ctx)
+    fun parseHtml(html: String): Document {
+        return Jsoup.parse(html)
     }
     
-    // ==================== 数据存储 ====================
-    
-    /**
-     * 获取缓存
-     */
-    fun get(key: String): Any? {
-        return cacheService.get(key)
-    }
-    
-    /**
-     * 设置缓存
-     */
-    fun put(key: String, value: Any?) {
-        if (value != null) {
-            cacheService.put(key, value)
-        }
-    }
-    
-    /**
-     * 移除缓存
-     */
-    fun remove(key: String) {
-        cacheService.remove(key)
-    }
-    
-    /**
-     * 检查缓存是否存在
-     */
-    fun contains(key: String): Boolean {
-        return cacheService.contains(key)
-    }
-    
-    /**
-     * 获取所有缓存 key
-     */
-    fun keys(): List<String> {
-        return cacheService.keys()
-    }
-    
-    /**
-     * 清空所有缓存
-     */
-    fun clear() {
-        cacheService.clear()
+    fun selectElements(html: String, selector: String): Elements {
+        return Jsoup.parse(html).select(selector)
     }
     
-    // ==================== 偏好设置 ====================
-    
-    /**
-     * 获取字符串偏好设置
-     */
-    fun getPrefString(key: String, default: String): String {
-        return preferenceService.getString(key, default)
-    }
-    
-    /**
-     * 设置字符串偏好设置
-     */
-    fun putPrefString(key: String, value: String) {
-        preferenceService.putString(key, value)
-    }
-    
-    /**
-     * 获取整数偏好设置
-     */
-    fun getPrefInt(key: String, default: Int): Int {
-        return preferenceService.getInt(key, default)
+    fun getElementText(html: String, selector: String): String {
+        return Jsoup.parse(html).select(selector).firstOrNull()?.text() ?: ""
     }
     
-    /**
-     * 设置整数偏好设置
-     */
-    fun putPrefInt(key: String, value: Int) {
-        preferenceService.putInt(key, value)
+    fun getElementAttr(html: String, selector: String, attr: String): String {
+        return Jsoup.parse(html).select(selector).firstOrNull()?.attr(attr) ?: ""
     }
     
-    /**
-     * 获取布尔偏好设置
-     */
-    fun getPrefBoolean(key: String, default: Boolean): Boolean {
-        return preferenceService.getBoolean(key, default)
-    }
-    
-    /**
-     * 设置布尔偏好设置
-     */
-    fun putPrefBoolean(key: String, value: Boolean) {
-        preferenceService.putBoolean(key, value)
-    }
+    // ==================== 元素操作 ====================
     
-    /**
-     * 获取长整数偏好设置
-     */
-    fun getPrefLong(key: String, default: Long): Long {
-        return preferenceService.getLong(key, default)
+    fun getHtml(element: Element): String {
+        return element.html()
     }
     
-    /**
-     * 设置长整数偏好设置
-     */
-    fun putPrefLong(key: String, value: Long) {
-        preferenceService.putLong(key, value)
+    fun getText(element: Element): String {
+        return element.text()
     }
     
-    /**
-     * 获取浮点数偏好设置
-     */
-    fun getPrefFloat(key: String, default: Float): Float {
-        return preferenceService.getFloat(key, default)
+    fun getAttr(element: Element, attr: String): String {
+        return element.attr(attr)
     }
     
-    /**
-     * 设置浮点数偏好设置
-     */
-    fun putPrefFloat(key: String, value: Float) {
-        preferenceService.putFloat(key, value)
+    fun getId(element: Element): String {
+        return element.id()
     }
     
-    /**
-     * 获取字符串集合偏好设置
-     */
-    fun getPrefStringSet(key: String, default: Set<String>): Set<String> {
-        return preferenceService.getStringSet(key, default)
+    fun getClass(element: Element): String {
+        return element.className()
     }
     
-    /**
-     * 设置字符串集合偏好设置
-     */
-    fun putPrefStringSet(key: String, value: Set<String>) {
-        preferenceService.putStringSet(key, value)
+    fun hasClass(element: Element, className: String): Boolean {
+        return element.hasClass(className)
     }
     
-    /**
-     * 移除偏好设置
-     */
-    fun removePref(key: String) {
-        preferenceService.remove(key)
+    fun removeAttr(element: Element, attr: String): Element {
+        return element.removeAttr(attr)
     }
     
-    /**
-     * 清空所有偏好设置
-     */
-    fun clearPref() {
-        preferenceService.clear()
+    fun setAttr(element: Element, attr: String, value: String): Element {
+        return element.attr(attr, value)
     }
     
-    // ==================== 工具方法 ====================
+    // ==================== 简化版 HTML 解析 ====================
     
-    /**
-     * 打印消息
-     */
-    fun print(msg: String) {
-        logger.info(msg)
+    fun html(html: String): Document {
+        return Jsoup.parse(html)
     }
     
-    /**
-     * 记录日志
-     */
-    fun log(msg: String) {
-        logger.info("[LOG] $msg")
+    fun text(html: String): String {
+        return Jsoup.parse(html).text()
     }
     
-    /**
-     * 记录错误日志
-     */
-    fun loge(msg: String) {
-        logger.error("[ERROR] $msg")
+    fun attr(html: String, selector: String, attr: String): String {
+        return Jsoup.parse(html).select(selector).firstOrNull()?.attr(attr) ?: ""
     }
     
-    /**
-     * 格式化当前时间
-     */
-    fun timeFormat(format: String): String {
-        return SimpleDateFormat(format).format(Date())
-    }
-    
-    /**
-     * 格式化指定时间戳
-     */
-    fun timeFormat(timestamp: Long, format: String): String {
-        return SimpleDateFormat(format).format(Date(timestamp))
-    }
+    // ==================== 日志 ====================
     
-    /**
-     * 解析时间字符串
-     */
-    fun parseTime(time: String, format: String): Long {
-        return try {
-            SimpleDateFormat(format).parse(time).time
-        } catch (e: Exception) {
-            logger.error("解析时间失败: $time", e)
-            0L
-        }
+    fun log(vararg messages: Any) {
+        logger.info(messages.joinToString(" "))
     }
     
-    /**
-     * 获取网络类型
-     */
-    fun getNetworkType(): String {
-        return "WIFI"
+    fun error(vararg messages: Any) {
+        logger.error(messages.joinToString(" "))
     }
     
-    /**
-     * 打开浏览器
-     */
-    fun startBrowser(url: String, title: String) {
-        try {
-            val os = System.getProperty("os.name").lowercase()
-            val command = when {
-                os.contains("win") -> "rundll32 url.dll,FileProtocolHandler $url"
-                os.contains("mac") -> "open $url"
-                else -> "xdg-open $url"
-            }
-            Runtime.getRuntime().exec(command)
-        } catch (e: Exception) {
-            logger.error("打开浏览器失败: $url", e)
-        }
+    fun warn(vararg messages: Any) {
+        logger.warn(messages.joinToString(" "))
     }
     
-    /**
-     * 打开浏览器（带 headers）
-     */
-    fun startBrowser(url: String, title: String, headers: Map<String, String>) {
-        startBrowser(url, title)
+    fun debug(vararg messages: Any) {
+        logger.debug(messages.joinToString(" "))
     }
     
-    /**
-     * 打开浏览器（带 headers 和 css）
-     */
-    fun startBrowser(url: String, title: String, headers: Map<String, String>, css: String) {
-        startBrowser(url, title)
+    fun info(vararg messages: Any) {
+        logger.info(messages.joinToString(" "))
     }
 }
