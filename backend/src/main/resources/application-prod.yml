@@ -1,52 +1,51 @@
+# ============================================================================
 # 生产环境配置
-
+# ============================================================================
+ 
 spring:
+  profiles:
+    group:
+      prod: prod
+  
+  # 生产环境使用 SQLite
   datasource:
-    url: jdbc:h2:file:/var/lib/moyue/data/moyue;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:sqlite:${moyue.data.home:~/MoyueData}/moyue.db
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+  
+  # 生产环境不显示 SQL
   jpa:
-    hibernate:
-      ddl-auto: validate  # 生产环境只验证，不自动更新
     show-sql: false
   
-  h2:
-    console:
+  # 生产环境禁用 devtools
+  devtools:
+    livereload:
       enabled: false
-
+    restart:
+      enabled: false
+ 
+# 日志级别（生产环境更精简）
 logging:
   level:
-    root: WARN
+    root: INFO
     com.moyue: INFO
     org.springframework: WARN
     org.hibernate: WARN
   file:
-    name: /var/log/moyue/moyue-backend.log
-
-moyue:
-  data:
-    home: /var/lib/moyue
-  security:
-    default-level: standard  # 生产环境使用标准安全级别
-  
-  performance:
-    cache:
-      enabled: true
-      ttl: 1800  # 30分钟
-      
-# 生产环境 OkHttp 配置
+    max-size: 100MB
+    max-history: 90
+ 
+# OkHttp 生产环境禁用日志
 okhttp:
-  connect-timeout: 10
-  read-timeout: 30
-  write-timeout: 10
-  connection-pool:
-    max-idle: 20
-    keep-alive: 10
   logging:
-    enabled: false  # 生产环境关闭日志
-  proxy:
     enabled: false
-
-# 生产环境异步任务配置
-async:
-  core-pool-size: 10
-  max-pool-size: 20
-  queue-capacity: 200
+ 
+# 安全配置（生产环境）
+moyue:
+  security:
+    default-level: standard  # 生产环境使用标准模式
+    jwt:
+      expiration: 604800  # 7天
