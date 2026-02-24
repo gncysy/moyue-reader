@@ -1,59 +1,61 @@
-# ============================================================================
-# 开发环境配置
-# ============================================================================
+# ============================================
+# Moyue Reader - 开发环境配置
+# Spring Boot 4.0.3 + Kotlin 2.3.10
+# ============================================
  
 spring:
-  profiles:
-    group:
-      dev: dev
-      test: dev
-  
-  # 开发环境使用 H2 内存数据库（便于测试）
+  # ==================== 数据库配置 ====================
   datasource:
-    url: jdbc:h2:mem:devdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: ""
+    url: jdbc:sqlite:./moyue-dev.db
+    driver-class-name: org.sqlite.JDBC
   
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
-      settings:
-        web-allow-others: false
-  
-  # 开发环境显示 SQL
+  # ==================== JPA 配置 ====================
   jpa:
-    show-sql: true
+    hibernate:
+      ddl-auto: update
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
-  
-  # 开发环境启用 devtools
-  devtools:
-    livereload:
-      enabled: true
-    restart:
-      enabled: true
+        format_sql: false
  
-# 日志级别（开发环境更详细）
+# ==================== 日志配置 ====================
 logging:
   level:
-    root: DEBUG
+    root: INFO
     com.moyue: DEBUG
-    org.springframework: INFO
-    org.hibernate: DEBUG
-    tools.jackson: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  file:
+    name: logs/moyue-dev.log
  
-# OkHttp 开发环境启用日志
-okhttp:
-  logging:
-    enabled: true
-    level: BODY
- 
-# 安全配置（开发环境）
+# ==================== Moyue 配置 ====================
 moyue:
   security:
-    default-level: compatible  # 开发环境使用兼容模式
     jwt:
-      expiration: 86400
+      secret: dev-secret-key-for-testing-only
+    default-level: compatible  # 开发环境使用兼容模式
+  
+  # ==================== 缓存配置 ====================
+  cache:
+    enabled: true
+    default-ttl: 600  # 开发环境短一些
+    max-size: 1000
+  
+  # ==================== 性能配置 ====================
+  performance:
+    enable-compression: false  # 开发环境关闭压缩，方便调试
+  
+  # ==================== Swagger 配置 ====================
+  swagger:
+    enabled: true
+ 
+# ==================== Actuator 配置 ====================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
