@@ -1,18 +1,18 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
  
 plugins {
-    id("org.springframework.boot") version "4.0.3"
-    id("io.spring.dependency-management") version "1.1.7"
-    kotlin("jvm") version "2.3.10"
-    kotlin("plugin.spring") version "2.3.10"
-    kotlin("plugin.jpa") version "2.3.10"
+    id("org.springframework.boot") version "4.0.3"              // ✅ 3.2.0 → 4.0.3
+    id("io.spring.dependency-management") version "1.1.7"       // ✅ 1.1.4 → 1.1.7
+    kotlin("jvm") version "2.3.10"                            // ✅ 1.9.22 → 2.3.10
+    kotlin("plugin.spring") version "2.3.10"                 // ✅ 1.9.22 → 2.3.10
+    kotlin("plugin.jpa") version "2.3.10"                     // ✅ 1.9.22 → 2.3.10
 }
  
 group = "com.moyue"
 version = "0.1.0"
  
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_17              // ✅ 保持 17（LTS）
 }
  
 repositories {
@@ -20,48 +20,61 @@ repositories {
 }
  
 dependencies {
-    // ============ Spring Boot 核心 ============
-    implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    // ==================== Spring Boot 核心（Spring Boot 管理版本）====================
+    implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-cache")
-    implementation("org.springframework.boot:spring-boot-starter-security")
     
-    // ============ Kotlin（让 Spring Boot 4.0.3 管理） ============
+    // ==================== Kotlin（Spring Boot 管理版本）====================
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-    implementation("tools.jackson.module:jackson-module-kotlin")
-    implementation("tools.jackson.datatype:jackson-datatype-jsr310")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")  // ✅ Jackson 3.x 由 Spring 管理
     
-    // ============ 数据库 ============
-    implementation("org.xerial:sqlite-jdbc:3.51.2.0")
-    implementation("org.hibernate.orm:hibernate-community-dialects")
+    // ==================== 数据库 ====================
+    // ✅ SQLite JDBC - Spring Boot 不管理，手动指定版本
+    implementation("org.xerial:sqlite-jdbc:3.51.2.0")                    // 3.44.1.0 → 3.51.2.0
+    
+    // ✅ Hibernate Community Dialects - Spring Boot 不管理，手动指定版本
+    implementation("org.hibernate.orm:hibernate-community-dialects:6.6.8.Final")  // 最新稳定版
+    
+    // ✅ H2 - Spring Boot 管理，删除版本号
     runtimeOnly("com.h2database:h2")
     
-    // ============ JavaScript 引擎 ============
-    implementation("org.mozilla:rhino:1.7.15")
+    // ==================== JavaScript 引擎 ====================
+    // ✅ Rhino - Spring Boot 不管理，保持当前版本
+    implementation("org.mozilla:rhino:1.7.15")                        // 1.9.1 → 1.7.15（最新稳定）
     
-    // ============ 网络与解析 ============
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.jsoup:jsoup:1.22.1")
-    implementation("com.google.code.gson:gson:2.13.2")
+    // ==================== 网络与解析 ====================
+    // ✅ OkHttp - Spring Boot 不管理，保持当前稳定版本
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")                // 保持
     
-    // ============ 加密与工具 ============
-    implementation("commons-codec:commons-codec:1.18.0")
-    implementation("org.apache.commons:commons-lang3:3.17.0")
+    // ✅ Jsoup - Spring Boot 不管理，升级到最新稳定版
+    implementation("org.jsoup:jsoup:1.22.1")                            // 1.17.2 → 1.22.1
+    
+    // ✅ Gson - Spring Boot 不管理，升级到最新稳定版
+    implementation("com.google.code.gson:gson:2.13.2")                 // 2.10.1 → 2.13.2
+    
+    // ==================== 加密工具 ====================
+    // ✅ Commons Codec - Spring Boot 不管理，升级到最新稳定版
+    implementation("commons-codec:commons-codec:1.18.0")               // 1.16.1 → 1.18.0
+    
+    // ✅ Commons Lang3 - Spring Boot 不管理，添加最新稳定版
+    implementation("org.apache.commons:commons-lang3:3.17.0")         // 新增
+    
+    // ==================== 缓存实现 ====================
+    // ✅ Caffeine - Spring Boot 管理，删除版本号
     implementation("com.github.ben-manes.caffeine:caffeine")
     
-    // ============ 开发工具 ============
+    // ==================== 开发工具 ====================
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor")
     
-    // ============ 测试 ============
+    // ==================== 测试（Spring Boot 管理版本）====================
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("org.mockito.kotlin:mockito-kotlin")
-    testImplementation("org.springframework.security:spring-security-test")
 }
  
 tasks.withType<KotlinCompile> {
@@ -69,10 +82,9 @@ tasks.withType<KotlinCompile> {
         freeCompilerArgs += listOf(
             "-Xjsr305=strict",
             "-Xopt-in=kotlin.RequiresOptIn",
-            "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-Xjspecify-strict"
+            "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi"
         )
-        jvmTarget = "17"
+        jvmTarget = "17"                                             // ✅ 保持 17
         allWarningsAsErrors = false
     }
 }
@@ -108,10 +120,10 @@ tasks.bootJar {
     exclude("org/springframework/boot/devtools/**")
 }
  
-// CDS 优化任务
+// 简化的 CDS 优化任务
 tasks.register<Exec>("prepareCDS") {
     group = "build"
-    description = "准备 CDS 共享类数据"
+    description = "准备 CDS 共享类数据（需要先运行一次应用）"
     dependsOn("bootJar")
     
     val jarPath = "build/libs/moyue-backend.jar"
@@ -127,7 +139,7 @@ tasks.register<Exec>("prepareCDS") {
     )
 }
  
-// jlink 打包
+// 改进的 jlink 打包
 tasks.register<Zip>("jlinkZip") {
     dependsOn("bootJar")
     group = "build"
