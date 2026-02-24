@@ -1,182 +1,194 @@
 package com.moyue.model
-
-import jakarta.persistence.AttributeConverter
-import jakarta.persistence.Converter
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
-import com.google.gson.reflect.TypeToken
-
+ 
+import jakarta.persistence.*
+import jakarta.validation.constraints.NotBlank
+import org.jspecify.annotations.Nullable
+import tools.jackson.annotation.JsonFormat
+import tools.jackson.annotation.JsonProperty
+import java.time.LocalDateTime
+ 
 /**
- * 搜索规则
- * 用于从搜索结果页面解析书籍信息
+ * 书源规则实体
+ *
+ * Spring Boot 4.0.3 + Kotlin 2.3.10
+ * 支持 Legado 书源规则格式
+ *
+ * @property id 唯一标识（UUID）
+ * @property ruleId 规则 ID（书源 ID）
+ * @property searchUrl 搜索 URL
+ * @property searchList 搜索列表规则
+ * @property searchName 搜索名称规则
+ * @property searchAuthor 搜索作者规则
+ * @property searchCoverUrl 搜索封面规则
+ * @property searchBookUrl 搜索书籍 URL 规则
+ * @property bookUrl 书籍 URL
+ * @property bookInfo 书籍信息规则
+ * @property chapterList 章节列表规则
+ * @property chapterName 章节名称规则
+ * @property chapterUrl 章节 URL 规则
+ * @property contentUrl 内容 URL 规则
+ * @property content 内容规则
+ * @property enabled 是否启用
+ * @property createdAt 创建时间
+ * @property updatedAt 更新时间
  */
-data class SearchRule(
-    val bookList: String? = null,
-    val name: String? = null,
-    val author: String? = null,
-    val kind: String? = null,
-    val coverUrl: String? = null,
-    val intro: String? = null,
-    val lastChapter: String? = null,
-    val bookUrl: String? = null
+@Entity
+@Table(
+    name = "book_source_rules",
+    indexes = [
+        Index(name = "idx_rule_id", columnList = "rule_id")
+    ],
+    uniqueConstraints = [
+        UniqueConstraint(name = "uk_rule_id", columnNames = ["rule_id"])
+    ]
 )
-
-/**
- * 书籍信息规则
- * 用于从书籍详情页解析信息
- */
-data class BookInfoRule(
-    val init: String? = null,
-    val name: String? = null,
-    val author: String? = null,
-    val intro: String? = null,
-    val coverUrl: String? = null,
-    val lastChapter: String? = null,
-    val tocUrl: String? = null,
-    val wordCount: String? = null
-)
-
-/**
- * 目录规则
- * 用于从目录页解析章节列表
- */
-data class TocRule(
-    val chapterList: String? = null,
-    val chapterName: String? = null,
-    val chapterUrl: String? = null,
-    val isPay: String? = null,
-    val updateTime: String? = null
-)
-
-/**
- * 内容规则
- * 用于从章节页解析正文内容
- */
-data class ContentRule(
-    val content: String? = null,
-    val nextContentUrl: String? = null
-)
-
-/**
- * 探索规则
- * 用于从发现页解析书籍列表
- */
-data class ExploreRule(
-    val bookList: String? = null,
-    val name: String? = null,
-    val author: String? = null,
-    val coverUrl: String? = null,
-    val intro: String? = null
-)
-
-/**
- * 泛型 JSON 转换器
- * 
- * 将数据类序列化为 JSON 存储到数据库
- */
-private class JsonConverter<T>(
-    private val clazz: Class<T>
-) : AttributeConverter<T?, String> {
+data class BookSourceRules(
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    val id: String? = null,
     
-    private companion object {
-        val gson: Gson = GsonBuilder()
-            .setPrettyPrinting()
-            .create()
+    @Column(name = "rule_id", unique = true, length = 100)
+    @field:NotBlank(message = "规则 ID 不能为空")
+    var ruleId: String = "",
+    
+    // ==================== 搜索规则 ====================
+    
+    @Column(name = "search_url", columnDefinition = "TEXT")
+    @Nullable
+    var searchUrl: String? = null,
+    
+    @Column(name = "search_list", columnDefinition = "TEXT")
+    @Nullable
+    var searchList: String? = null,
+    
+    @Column(name = "search_name", columnDefinition = "TEXT")
+    @Nullable
+    var searchName: String? = null,
+    
+    @Column(name = "search_author", columnDefinition = "TEXT")
+    @Nullable
+    var searchAuthor: String? = null,
+    
+    @Column(name = "search_cover_url", columnDefinition = "TEXT")
+    @Nullable
+    var searchCoverUrl: String? = null,
+    
+    @Column(name = "search_book_url", columnDefinition = "TEXT")
+    @Nullable
+    var searchBookUrl: String? = null,
+    
+    // ==================== 书籍详情规则 ====================
+    
+    @Column(name = "book_url", columnDefinition = "TEXT")
+    @Nullable
+    var bookUrl: String? = null,
+    
+    @Column(name = "book_info", columnDefinition = "TEXT")
+    @Nullable
+    var bookInfo: String? = null,
+    
+    // ==================== 章节列表规则 ====================
+    
+    @Column(name = "chapter_list", columnDefinition = "TEXT")
+    @Nullable
+    var chapterList: String? = null,
+    
+    @Column(name = "chapter_name", columnDefinition = "TEXT")
+    @Nullable
+    var chapterName: String? = null,
+    
+    @Column(name = "chapter_url", columnDefinition = "TEXT")
+    @Nullable
+    var chapterUrl: String? = null,
+    
+    // ==================== 内容规则 ====================
+    
+    @Column(name = "content_url", columnDefinition = "TEXT")
+    @Nullable
+    var contentUrl: String? = null,
+    
+    @Column(name = "content", columnDefinition = "TEXT")
+    @Nullable
+    var content: String? = null,
+    
+    // ==================== 其他规则 ====================
+    
+    @Column(name = "headers", columnDefinition = "TEXT")
+    @Nullable
+    var headers: String? = null,
+    
+    @Column(name = "charset", length = 50)
+    @Nullable
+    var charset: String? = null,
+    
+    @Column(name = "enabled", nullable = false)
+    var enabled: Boolean = true,
+    
+    @Column(name = "created_at", updatable = false, nullable = false)
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    var createdAt: LocalDateTime = LocalDateTime.now(),
+    
+    @Column(name = "updated_at", nullable = false)
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    var updatedAt: LocalDateTime = LocalDateTime.now()
+) {
+    
+    /**
+     * 判断规则是否有效
+     */
+    @get:JsonProperty("isValid")
+    val isValid: Boolean
+        get() = enabled && (
+            searchUrl != null ||
+            bookUrl != null ||
+            chapterUrl != null
+        )
+    
+    /**
+     * 获取规则统计
+     */
+    @get:JsonProperty("ruleStats")
+    val ruleStats: Map<String, Int>
+        get() = mapOf(
+            "searchRules" to countRules(searchUrl, searchList, searchName, searchAuthor, searchCoverUrl, searchBookUrl),
+            "bookInfoRules" to countRules(bookUrl, bookInfo),
+            "chapterRules" to countRules(chapterList, chapterName, chapterUrl),
+            "contentRules" to countRules(contentUrl, content)
+        )
+    
+    private fun countRules(vararg rules: String?): Int {
+        return rules.count { !it.isNullOrEmpty() }
     }
     
-    override fun convertToDatabaseColumn(attribute: T?): String? {
-        return try {
-            attribute?.let { gson.toJson(it) }
-        } catch (e: Exception) {
-            null
+    /**
+     * 转换为 JSON 字符串
+     */
+    fun toJson(): String {
+        return com.google.gson.Gson().toJson(this)
+    }
+    
+    companion object {
+        private const val serialVersionUID = 1L
+        
+        /**
+         * 从 JSON 字符串解析
+         */
+        fun fromJson(json: String): BookSourceRules {
+            return com.google.gson.Gson().fromJson(json, BookSourceRules::class.java)
         }
     }
     
-    override fun convertToEntityAttribute(dbData: String?): T? {
-        return try {
-            dbData?.let { gson.fromJson(it, clazz) }
-        } catch (e: Exception) {
-            null
-        }
-    }
-}
-
-/**
- * SearchRule 转换器
- */
-@Converter(autoApply = true)
-class SearchRuleConverter : AttributeConverter<SearchRule?, String> {
-    private val delegate = JsonConverter(SearchRule::class.java)
+    // ==================== JPA 生命周期回调 ====================
     
-    override fun convertToDatabaseColumn(attribute: SearchRule?): String? {
-        return delegate.convertToDatabaseColumn(attribute)
+    @PrePersist
+    fun onCreate() {
+        val now = LocalDateTime.now()
+        createdAt = now
+        updatedAt = now
     }
     
-    override fun convertToEntityAttribute(dbData: String?): SearchRule? {
-        return delegate.convertToEntityAttribute(dbData)
-    }
-}
-
-/**
- * BookInfoRule 转换器
- */
-@Converter(autoApply = true)
-class BookInfoRuleConverter : AttributeConverter<BookInfoRule?, String> {
-    private val delegate = JsonConverter(BookInfoRule::class.java)
-    
-    override fun convertToDatabaseColumn(attribute: BookInfoRule?): String? {
-        return delegate.convertToDatabaseColumn(attribute)
-    }
-    
-    override fun convertToEntityAttribute(dbData: String?): BookInfoRule? {
-        return delegate.convertToEntityAttribute(dbData)
-    }
-}
-
-/**
- * TocRule 转换器
- */
-@Converter(autoApply = true)
-class TocRuleConverter : AttributeConverter<TocRule?, String> {
-    private val delegate = JsonConverter(TocRule::class.java)
-    
-    override fun convertToDatabaseColumn(attribute: TocRule?): String? {
-        return delegate.convertToDatabaseColumn(attribute)
-    }
-    
-    override fun convertToEntityAttribute(dbData: String?): TocRule? {
-        return delegate.convertToEntityAttribute(dbData)
-    }
-}
-
-/**
- * ContentRule 转换器
- */
-@Converter(autoApply = true)
-class ContentRuleConverter : AttributeConverter<ContentRule?, String> {
-    private val delegate = JsonConverter(ContentRule::class.java)
-    
-    override fun convertToDatabaseColumn(attribute: ContentRule?): String? {
-        return delegate.convertToDatabaseColumn(attribute)
-    }
-    
-    override fun convertToEntityAttribute(dbData: String?): ContentRule? {
-        return delegate.convertToEntityAttribute(dbData)
-    }
-}
-
-/**
- * ExploreRule 转换器
- */
-@Converter(autoApply = true)
-class ExploreRuleConverter : AttributeConverter<ExploreRule?, String> {
-    private val delegate = JsonConverter(ExploreRule::class.java)
-    
-    override fun convertToDatabaseColumn(attribute: ExploreRule?): String? {
-        return delegate.convertToDatabaseColumn(attribute)
-    }
-    
-    override fun convertToEntityAttribute(dbData: String?): ExploreRule? {
-        return delegate.convertToEntityAttribute(dbData)
+    @PreUpdate
+    fun onUpdate() {
+        updatedAt = LocalDateTime.now()
     }
 }
