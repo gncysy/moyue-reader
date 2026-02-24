@@ -1,76 +1,65 @@
-# uninstall-service.ps1
-param(
-    [switch]$CleanFiles = $false
-)
-
+<#
+.SYNOPSIS
+    卸载 Moyue Reader 后端服务
+.DESCRIPTION
+    从 Windows 系统中移除 moyue-backend 服务
+.NOTES
+    需要管理员权限运行
+#>
+ 
+# 错误处理
 $ErrorActionPreference = "Stop"
-
-$ServiceName = "MoyueBackend"
-$ServiceDir = "C:\Program Files\Moyue\backend"
-
-Write-Host "🔧 开始卸载服务..." -ForegroundColor Yellow
-
+ 
+# 配置变量
+$serviceName = "MoyueBackend"
+$logPath = "C:\ProgramData\Moyue\logs"
+$configPath = "C:\ProgramData\Moyue\config"
+ 
+# 检查管理员权限
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "此脚本需要管理员权限运行"
+    exit 1
+}
+ 
 # 检查服务是否存在
-$service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+$service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
 if (-not $service) {
-    Write-Host "⚠️  服务不存在" -ForegroundColor Yellow
-    
-    if ($CleanFiles -and (Test-Path $ServiceDir)) {
-        Write-Host "`n🗑️  服务不存在，是否删除安装目录和文件？" -ForegroundColor Yellow
-        $confirm = Read-Host "确认删除? (y/N)"
-        if ($confirm -eq 'y' -or $confirm -eq 'Y') {
-            Remove-Item $ServiceDir -Recurse -Force
-            Write-Host "✅ 已删除目录: $ServiceDir" -ForegroundColor Green
-        }
-    }
+    Write-Warning "服务不存在: $serviceName"
     exit 0
 }
-
-# 停止服务
-if ($service.Status -eq 'Running') {
-    Write-Host "🛑 停止服务..." -ForegroundColor Yellow
-    try {
-        Stop-Service $ServiceName -Force -ErrorAction Stop
-        Write-Host "✅ 服务已停止" -ForegroundColor Green
-    } catch {
-        Write-Host "❌ 停止服务失败: $_" -ForegroundColor Red
-        exit 1
-    }
+ 
+Write-Host "正在停止服务..." -ForegroundColor Yellow
+& sc.exe stop $serviceName
+ 
+Start-Sleep -Seconds 2
+ 
+Write-Host "正在卸载服务..." -ForegroundColor Green
+ 
+# 使用 NSSM 卸载（如果可用）
+$nssmPath = "nssm.exe"
+if (Get-Command $nssmPath -ErrorAction SilentlyContinue) {
+    & $nssmPath remove $serviceName confirm
 }
-
-# 卸载服务
-if (Test-Path "$ServiceDir\moyue-service.exe") {
-    try {
-        Set-Location $ServiceDir
-        Start-Process -FilePath "$ServiceDir\moyue-service.exe" -ArgumentList "uninstall" -Wait -NoNewWindow -RedirectStandardOutput "$ServiceDir\uninstall.log" -RedirectStandardError "$ServiceDir\uninstall-error.log"
-        Write-Host "✅ 服务已卸载" -ForegroundColor Green
-    } catch {
-        Write-Host "❌ 卸载服务失败: $_" -ForegroundColor Red
-        Write-Host "   查看 $ServiceDir\uninstall-error.log 获取详情" -ForegroundColor Yellow
-        exit 1
-    }
-} else {
-    Write-Host "⚠️  未找到 WinSW 可执行文件" -ForegroundColor Yellow
+else {
+    & sc.exe delete $serviceName
 }
-
-# 清理文件
-if ($CleanFiles) {
-    Write-Host "`n🗑️  是否删除安装目录和文件?" -ForegroundColor Yellow
-    Write-Host "   包括: $ServiceDir" -ForegroundColor White
-    Write-Host "   警告: 此操作不可撤销！" -ForegroundColor Red
-    $confirm = Read-Host "确认删除? (y/N)"
+ 
+Write-Host "服务卸载成功" -ForegroundColor Green
+ 
+# 询问是否删除数据
+$removeData = Read-Host "是否删除日志和配置文件？(y/N)"
+if ($removeData -eq "y" -or $removeData -eq "Y") {
+    Write-Host "正在删除数据..." -ForegroundColor Yellow
     
-    if ($confirm -eq 'y' -or $confirm -eq 'Y') {
-        try {
-            Remove-Item $ServiceDir -Recurse -Force
-            Write-Host "✅ 已删除目录: $ServiceDir" -ForegroundColor Green
-        } catch {
-            Write-Host "❌ 删除目录失败: $_" -ForegroundColor Red
-            Write-Host "   请手动删除: $ServiceDir" -ForegroundColor Yellow
-        }
-    } else {
-        Write-Host "ℹ️  保留文件目录: $ServiceDir" -ForegroundColor Cyan
+    if (Test-Path $logPath) {
+        Remove-Item $logPath -Recurse -Force
+        Write-Host "已删除日志目录: $logPath"
     }
+    
+    if (Test-Path $configPath) {
+        Remove-Item $configPath -Recurse -Force
+        Write-Host "已删除配置目录: $configPath"
+    }
+    
+    Write-Host "数据清理完成" -ForegroundColor Green
 }
-
-Write-Host "`n✅ 卸载完成！" -ForegroundColor Green
