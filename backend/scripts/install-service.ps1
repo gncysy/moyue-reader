@@ -1,148 +1,79 @@
-# install-service.ps1
-param(
-    [string]$JarPath = "",
-    [string]$JavaPath = "",
-    [string]$InstallPath = "C:\Program Files\Moyue\backend",
-    [switch]$Force = $false
-)
-
+<#
+.SYNOPSIS
+    安装 Moyue Reader 后端服务
+.DESCRIPTION
+    将 moyue-backend.jar 注册为 Windows 服务
+.NOTES
+    需要管理员权限运行
+#>
+ 
+# 错误处理
 $ErrorActionPreference = "Stop"
-
-# 设置默认 JAR 路径
-if ($JarPath -eq "") {
-    $JarPath = "$PSScriptRoot\moyue-backend.jar"
-}
-if ($JavaPath -eq "") {
-    $JavaPath = "javaw.exe"
-}
-
-# 验证 JAR 文件存在
-if (-not (Test-Path $JarPath)) {
-    Write-Host "❌ 未找到 JAR 文件: $JarPath" -ForegroundColor Red
+ 
+# 配置变量
+$serviceName = "MoyueBackend"
+$displayName = "Moyue Reader Backend Service"
+$description = "Moyue Reader 后端服务 - Spring Boot 应用"
+$jarPath = "build\libs\moyue-backend.jar"
+$logPath = "C:\ProgramData\Moyue\logs"
+$configPath = "C:\ProgramData\Moyue\config"
+ 
+# 检查管理员权限
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Error "此脚本需要管理员权限运行"
     exit 1
 }
-
-# WinSW 配置
-$WinSWVersion = "v2.12.0"
-$WinSWUrl = "https://github.com/winsw/winsw/releases/download/$WinSWVersion/WinSW-x64.exe"
-$WinSWHash = "A5D6F8A1B3C4E5D6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4A5B6C7D8E9F0"
-
-# 检查服务是否已存在
-$service = Get-Service -Name "MoyueBackend" -ErrorAction SilentlyContinue
-if ($service -and -not $Force) {
-    Write-Host "⚠️  服务已存在，使用 -Force 参数强制重新安装" -ForegroundColor Yellow
-    exit 0
-}
-
-# 如果服务存在且指定了 -Force，先卸载
-if ($service -and $Force) {
-    Write-Host "🔄 正在卸载现有服务..." -ForegroundColor Yellow
-    & "$PSScriptRoot\uninstall-service.ps1"
-}
-
-Write-Host "📦 安装 Windows 服务..." -ForegroundColor Cyan
-
-# 创建服务目录
-try {
-    New-Item -ItemType Directory -Force -Path $InstallPath | Out-Null
-    Write-Host "✅ 创建目录: $InstallPath" -ForegroundColor Green
-} catch {
-    Write-Host "❌ 创建目录失败: $_" -ForegroundColor Red
+ 
+# 检查 JAR 文件是否存在
+if (-not (Test-Path $jarPath)) {
+    Write-Error "找不到 JAR 文件: $jarPath"
+    Write-Host "请先运行 ./gradlew build 构建 JAR 文件"
     exit 1
 }
-
-# 创建日志目录
-try {
-    New-Item -ItemType Directory -Force -Path "$InstallPath\logs" | Out-Null
-    Write-Host "✅ 创建日志目录" -ForegroundColor Green
-} catch {
-    Write-Host "❌ 创建日志目录失败: $_" -ForegroundColor Red
-    exit 1
+ 
+# 创建必要的目录
+New-Item -ItemType Directory -Force -Path $logPath | Out-Null
+New-Item -ItemType Directory -Force -Path $configPath | Out-Null
+ 
+# 复制配置文件（如果存在）
+if (Test-Path "application.yml") {
+    Copy-Item "application.yml" -Destination "$configPath\application.yml" -Force
 }
-
-# 复制 JAR 文件
-try {
-    Copy-Item $JarPath "$InstallPath\moyue-backend.jar" -Force
-    Write-Host "✅ 复制 JAR 文件" -ForegroundColor Green
-} catch {
-    Write-Host "❌ 复制 JAR 文件失败: $_" -ForegroundColor Red
-    exit 1
-}
-
-# 下载 WinSW
-$WinSWPath = "$InstallPath\moyue-service.exe"
-if (-not (Test-Path $WinSWPath)) {
-    Write-Host "📥 下载 WinSW $WinSWVersion..." -ForegroundColor Yellow
+ 
+Write-Host "正在安装服务..." -ForegroundColor Green
+ 
+# 使用 NSSM 安装服务（如果已安装 NSSM）
+$nssmPath = "nssm.exe"
+if (Get-Command $nssmPath -ErrorAction SilentlyContinue) {
+    & $nssmPath install $serviceName "java.exe" `
+        -jar $jarPath `
+        --spring.config.location="$configPath\application.yml" `
+        --logging.file.name="$logPath\moyue-backend.log"
     
-    try {
-        Invoke-WebRequest -Uri $WinSWUrl -OutFile $WinSWPath
-        Write-Host "✅ WinSW 下载完成" -ForegroundColor Green
-        
-        $actualHash = (Get-FileHash -Path $WinSWPath -Algorithm SHA256).Hash.ToUpper()
-        if ($actualHash -ne $WinSWHash) {
-            Write-Host "❌ WinSW 哈希校验失败！" -ForegroundColor Red
-            Write-Host "   期望: $WinSWHash" -ForegroundColor Red
-            Write-Host "   实际: $actualHash" -ForegroundColor Red
-            Remove-Item $WinSWPath -Force
-            exit 1
-        }
-        Write-Host "✅ WinSW 哈希校验通过" -ForegroundColor Green
-    } catch {
-        Write-Host "❌ 下载 WinSW 失败: $_" -ForegroundColor Red
-        exit 1
-    }
-} else {
-    Write-Host "✅ WinSW 已存在" -ForegroundColor Green
+    & $nssmPath set $serviceName DisplayName $displayName
+    & $nssmPath set $serviceName Description $description
+    & $nssmPath set $serviceName AppDirectory (Get-Location).Path
+    & $nssmPath set $serviceName AppStdout "$logPath\stdout.log"
+    & $nssmPath set $serviceName AppStderr "$logPath\stderr.log"
+    
+    Write-Host "服务安装成功（使用 NSSM）" -ForegroundColor Green
 }
-
-# 创建服务配置
-$ServiceXml = @"
-<service>
-  <id>MoyueBackend</id>
-  <name>墨阅后端服务</name>
-  <description>墨阅阅读器后端服务</description>
-  <executable>$JavaPath</executable>
-  <arguments>-Xshare:auto -jar "$InstallPath\moyue-backend.jar" --server.port=0 --spring.profiles.active=prod</arguments>
-  <log mode="roll"></log>
-  <logpath>$InstallPath\logs</logpath>
-  <delayedAutoStart>true</delayedAutoStart>
-  <onfailure action="restart" delay="10 sec"/>
-</service>
-"@
-
-try {
-    $ServiceXml | Out-File -FilePath "$InstallPath\moyue-service.xml" -Encoding UTF8
-    Write-Host "✅ 生成服务配置文件" -ForegroundColor Green
-} catch {
-    Write-Host "❌ 生成配置文件失败: $_" -ForegroundColor Red
-    exit 1
+else {
+    # 使用 sc.exe 安装服务
+    $javaPath = (Get-Command java.exe).Source
+    
+    & sc.exe create $serviceName binPath= "`"$javaPath`" -jar `"$jarPath`" --spring.config.location=`"$configPath\application.yml`"" DisplayName= $displayName start= auto
+    & sc.exe description $serviceName $description
+    
+    Write-Host "服务安装成功（使用 sc.exe）" -ForegroundColor Green
+    Write-Warning "推荐安装 NSSM 以获得更好的日志管理"
 }
-
-# 安装服务
-try {
-    Set-Location $InstallPath
-    Start-Process -FilePath "$WinSWPath" -ArgumentList "install" -Wait -NoNewWindow -RedirectStandardOutput "$InstallPath\install.log" -RedirectStandardError "$InstallPath\install-error.log"
-    Write-Host "✅ 服务安装成功" -ForegroundColor Green
-} catch {
-    Write-Host "❌ 服务安装失败: $_" -ForegroundColor Red
-    Write-Host "   查看 $InstallPath\install-error.log 获取详情" -ForegroundColor Yellow
-    exit 1
-}
-
+ 
 # 启动服务
-try {
-    Start-Process -FilePath "$WinSWPath" -ArgumentList "start" -Wait -NoNewWindow
-    Write-Host "✅ 服务启动成功" -ForegroundColor Green
-} catch {
-    Write-Host "❌ 服务启动失败: $_" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "`n🎉 服务安装完成！" -ForegroundColor Green
-Write-Host "   服务名称: MoyueBackend" -ForegroundColor Cyan
-Write-Host "   安装路径: $InstallPath" -ForegroundColor Cyan
-Write-Host "   日志路径: $InstallPath\logs" -ForegroundColor Cyan
-Write-Host "`n   使用以下命令管理服务:" -ForegroundColor Yellow
-Write-Host "   停止:   & '$WinSWPath' stop" -ForegroundColor White
-Write-Host "   重启:   & '$WinSWPath' restart" -ForegroundColor White
-Write-Host "   卸载:   & '$PSScriptRoot\uninstall-service.ps1'" -ForegroundColor White
+Write-Host "正在启动服务..." -ForegroundColor Yellow
+& sc.exe start $serviceName
+ 
+Write-Host "`n服务安装并启动完成！" -ForegroundColor Green
+Write-Host "服务名称: $serviceName"
+Write-Host "日志路径: $logPath"
+Write-Host "配置路径: $configPath"
