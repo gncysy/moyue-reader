@@ -6,10 +6,12 @@
   "license": "GPL-3.0",
   "private": true,
   "main": "dist-electron/main.js",
+  
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
   },
+  
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build",
@@ -23,6 +25,7 @@
     "lint": "vue-tsc --noEmit",
     "format": "prettier --write \"src/**/*.{vue,ts,tsx,js,jsx,json,css,scss,md}\""
   },
+  
   "dependencies": {
     "vue": "^3.5.0",
     "vue-router": "^4.4.0",
@@ -32,6 +35,7 @@
     "@element-plus/icons-vue": "^2.4.0",
     "monaco-editor": "^0.52.0"
   },
+  
   "devDependencies": {
     "vite": "^6.0.0",
     "@vitejs/plugin-vue": "^5.2.0",
@@ -52,26 +56,34 @@
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0"
   },
+  
   "build": {
     "appId": "com.moyue.reader",
     "productName": "墨阅",
     "copyright": "Copyright © 2026 墨阅团队",
+    
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
+    
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
       "package.json"
     ],
+    
     "extraMetadata": {
       "main": "dist-electron/main.js"
     },
+    
     "asar": true,
     "asarUnpack": [
       "**/node_modules/monaco-editor/**/*"
     ],
+    
+    // ==================== 图标配置 ====================
+    
     "win": {
       "target": [
         {
@@ -83,23 +95,25 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "build/icon.ico",
+      "icon": "build/icon.ico",  // Windows 图标路径
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
+    
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeader": "build/installer-header.bmp",
-      "installerSidebar": "build/installer-sidebar.bmp",
+      "installerIcon": "build/icon.ico",           // 安装程序图标
+      "uninstallerIcon": "build/icon.ico",         // 卸载程序图标
+      "installerHeader": "build/installer-header.bmp",      // 安装程序头部图（164x314）
+      "installerSidebar": "build/installer-sidebar.bmp",     // 安装程序侧边栏图（164x314）
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true,
       "include": "build/nsis-installer.nsh"
     },
+    
     "mac": {
       "target": [
         {
@@ -107,7 +121,7 @@
           "arch": ["x64", "arm64"]
         }
       ],
-      "icon": "build/icon.icns",
+      "icon": "build/icon.icns",  // macOS 图标路径
       "category": "public.app-category.books",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -115,6 +129,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
+    
     "dmg": {
       "contents": [
         {
@@ -133,13 +148,14 @@
         "height": 380
       }
     },
+    
     "linux": {
       "target": [
         "AppImage",
         "deb",
         "rpm"
       ],
-      "icon": "build/icons",
+      "icon": "build/icon.png",  // Linux 图标路径
       "category": "Office",
       "maintainer": "gncysy",
       "vendor": "墨阅团队",
@@ -147,6 +163,7 @@
       "description": "墨阅是一个跨平台桌面阅读器，支持 Legado 书源",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
+    
     "publish": {
       "provider": "github",
       "owner": "gncysy",
