@@ -1,611 +1,728 @@
 package com.moyue.security
-
-import okhttp3.*
-import java.net.Inet4Address
-import java.net.InetAddress
+ 
+import org.slf4j.LoggerFactory
+import org.mozilla.javascript.Context
+import org.mozilla.javascript.FunctionObject
+import org.mozilla.javascript.Scriptable
 import java.net.URL
+import java.net.URLEncoder
+import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
-import java.nio.file.*
-import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.*
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedDeque
-import java.util.concurrent.ThreadLocalRandom
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
-import org.slf4j.LoggerFactory
-import javax.net.ssl.HostnameVerifier
-import javax.net.ssl.SSLSession
-
+import java.util.regex.Pattern
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
+import javax.crypto.spec.IvParameterSpec
+ 
+/**
+ * 安全的 JavaScript 扩展
+ *
+ * Spring Boot 4.0.3 + Kotlin 2.3.10
+ *
+ * 功能：
+ * - 提供书源规则所需的 JavaScript 扩展函数
+ * - 实现安全沙箱，防止恶意代码执行
+ * - 支持常用工具函数：Base64、AES、MD5、正则等
+ *
+ * @author Moyue Team
+ * @since 4.0.3
+ */
 class SafeJsExtensions(
-    private val policy: SecurityPolicy,
-    private val okHttpClient: OkHttpClient? = null
+    private val securityPolicy: SecurityPolicy = SecurityPolicy.forLevel(SecurityLevel.STANDARD)
 ) {
     
-    companion object {
-        private val logger = LoggerFactory.getLogger(SafeJsExtensions::class.java)
+    private val logger = LoggerFactory.getLogger(SafeJsExtensions::class.java)
+    
+    /**
+     * 注册安全扩展函数到 JavaScript 作用域
+     */
+    fun registerExtensions(scope: Scriptable) {
+        logger.debug("注册安全 JavaScript 扩展函数")
         
-        // 内网 IP 地址段
-        private val PRIVATE_IP_RANGES = listOf(
-            "10.0.0.0/8",
-            "172.16.0.0/12",
-            "192.168.0.0/16",
-            "127.0.0.0/8",
-            "169.254.0.0/16",
-            "fc00::/7"
-        )
+        // 字符串处理
+        registerFunction(scope, "base64Encode", ::base64Encode)
+        registerFunction(scope, "base64Decode", ::base64Decode)
+        registerFunction(scope, "md5", ::md5)
+        registerFunction(scope, "sha1", ::sha1)
+        registerFunction(scope, "sha256", ::sha256)
+        registerFunction(scope, "urlEncode", ::urlEncode)
+        registerFunction(scope, "urlDecode", ::urlDecode)
         
-        // 允许的 HTTP 方法
-        private val ALLOWED_HTTP_METHODS = setOf("GET", "POST", "HEAD", "OPTIONS")
+        // 加密
+        registerFunction(scope, "aesEncode", ::aesEncode)
+        registerFunction(scope, "aesDecode", ::aesDecode)
+        registerFunction(scope, "desEncode", ::desEncode)
+        registerFunction(scope, "desDecode", ::desDecode)
+        registerFunction(scope, "rsaEncode", ::rsaEncode)
+        registerFunction(scope, "rsaDecode", ::rsaDecode)
         
-        // Cookie 存储
-        private val cookieStore = ConcurrentHashMap<String, MutableList<Cookie>>()
+        // 正则
+        registerFunction(scope, "regexMatch", ::regexMatch)
+        registerFunction(scope, "regexMatchAll", ::regexMatchAll)
+        registerFunction(scope, "regexReplace", ::regexReplace)
+        registerFunction(scope, "regexSplit", ::regexSplit)
         
-        // 请求限流记录（按时间窗口）
-        private val requestHistory = ConcurrentHashMap<String, ConcurrentLinkedDeque<Long>>()
+        // 日期
+        registerFunction(scope, "formatDate", ::formatDate)
+        registerFunction(scope, "parseDate", ::parseDate)
+        registerFunction(scope, "currentTime", ::currentTime)
         
-        // 请求 ID 生成器
-        private val requestIdGenerator = AtomicLong(0)
+        // 字符串
+        registerFunction(scope, "substring", ::substring)
+        registerFunction(scope, "substringBefore", ::substringBefore)
+        registerFunction(scope, "substringAfter", ::substringAfter)
+        registerFunction(scope, "substringBetween", ::substringBetween)
+        registerFunction(scope, "trim", ::trim)
+        registerFunction(scope, "replaceAll", ::replaceAll)
+        registerFunction(scope, "replaceFirst", ::replaceFirst)
+        registerFunction(scope, "split", ::split)
+        registerFunction(scope, "join", ::join)
+        
+        // 集合
+        registerFunction(scope, "map", ::map)
+        registerFunction(scope, "filter", ::filter)
+        registerFunction(scope, "reduce", ::reduce)
+        registerFunction(scope, "find", ::find)
+        registerFunction(scope, "contains", ::contains)
+        registerFunction(scope, "sortBy", ::sortBy)
+        registerFunction(scope, "reverse", ::reverse)
+        registerFunction(scope, "distinct", ::distinct)
+        
+        // JSON
+        registerFunction(scope, "jsonParse", ::jsonParse)
+        registerFunction(scope, "jsonStringify", ::jsonStringify)
+        
+        // 网络（受限制）
+        if (securityPolicy.allowsNetwork) {
+            registerFunction(scope, "httpGet", ::httpGet)
+            registerFunction(scope, "httpPost", ::httpPost)
+        }
+        
+        // 日志
+        registerFunction(scope, "log", ::log)
+        registerFunction(scope, "error", ::error)
+        registerFunction(scope, "warn", ::warn)
     }
     
-    private val sandboxRoot = Paths.get(policy.sandboxRoot).normalize()
+    // ==================== 辅助方法 ====================
     
-    // 请求计数器（按会话）
-    private val sessionRequestCount = AtomicInteger(0)
-    
-    // OkHttp 客户端（使用传入的或创建新的）
-    private val httpClient = okHttpClient ?: createOkHttpClient()
-    
-    // 线程安全的 SimpleDateFormat 缓存
-    private val dateFormatCache = ThreadLocal<SimpleDateFormat>()
-    
-    init {
+    private fun registerFunction(scope: Scriptable, name: String, func: (Array<Any>, Scriptable) -> Any?) {
         try {
-            Files.createDirectories(sandboxRoot)
+            FunctionObject(name, func, scope).apply {
+                scope.put(this, scope, this)
+            }
         } catch (e: Exception) {
-            logger.error("沙箱目录创建失败: ${sandboxRoot}", e)
-            throw SecurityException("沙箱目录初始化失败", e)
-        }
-        
-        logger.info("安全扩展初始化完成，策略级别: ${policy.level.name}")
-    }
-    
-    /**
-     * HTTP 请求（增强版）
-     */
-    fun ajax(
-        url: String,
-        method: String = "GET",
-        headers: Map<String, String>? = null,
-        body: String? = null,
-        timeout: Long? = null,
-        allowRedirects: Boolean = policy.allowRedirects,
-        validateSSL: Boolean = true
-    ): String {
-        val requestId = requestIdGenerator.incrementAndGet()
-        logger.debug("请求开始 [$requestId]: $method $url")
-        
-        try {
-            // 检查请求限制
-            checkRequestLimit()
-            
-            // 验证 URL
-            validateUrl(url)
-            
-            // 验证 HTTP 方法
-            val upperMethod = method.uppercase()
-            if (!ALLOWED_HTTP_METHODS.contains(upperMethod)) {
-                throw SecurityException("不允许的 HTTP 方法: $method")
-            }
-            
-            // 内网地址检查
-            if (!policy.allowInternalNetwork) {
-                checkInternalNetwork(url)
-            }
-            
-            // 域名黑名单检查
-            checkBlockedDomain(url)
-            
-            // 构建请求
-            val requestBuilder = Request.Builder()
-                .url(url)
-                .method(upperMethod, body?.toRequestBody())
-            
-            // 添加默认头部
-            requestBuilder.addHeader("User-Agent", "MoyueReader/1.0")
-            
-            // 添加自定义头部
-            headers?.forEach { (k, v) ->
-                if (!isHeaderBlocked(k)) {
-                    requestBuilder.addHeader(k, v)
-                }
-            }
-            
-            // 添加 Cookie
-            val domain = URL(url).host
-            val cookies = cookieStore[domain]?.joinToString("; ") { "${it.name}=${it.value}" } ?: ""
-            if (cookies.isNotEmpty()) {
-                requestBuilder.addHeader("Cookie", cookies)
-            }
-            
-            // 构建客户端（控制重定向）
-            val clientBuilder = httpClient.newBuilder()
-                .connectTimeout(timeout ?: policy.timeoutMs, TimeUnit.MILLISECONDS)
-                .readTimeout(timeout ?: policy.timeoutMs, TimeUnit.MILLISECONDS)
-                .writeTimeout(timeout ?: policy.timeoutMs, TimeUnit.MILLISECONDS)
-            
-            if (!allowRedirects) {
-                clientBuilder.followRedirects(false)
-                clientBuilder.followSslRedirects(false)
-            }
-            
-            if (!validateSSL) {
-                clientBuilder.hostnameVerifier(TrustAllHostnameVerifier())
-                clientBuilder.sslSocketFactory(
-                    TrustAllSSLSocketFactory(),
-                    TrustAllHostnameVerifier()
-                )
-            }
-            
-            val client = clientBuilder.build()
-            val request = requestBuilder.build()
-            val response = client.newCall(request).execute()
-            
-            // 保存 Cookie
-            saveCookies(response, url)
-            
-            // 检查响应状态
-            if (!response.isSuccessful) {
-                logger.warn("请求失败 [$requestId]: ${response.code}")
-                throw SecurityException("HTTP 请求失败: ${response.code}")
-            }
-            
-            val responseBody = response.body
-            if (responseBody == null) {
-                throw SecurityException("响应体为空")
-            }
-            
-            // 检查响应大小
-            val contentLength = responseBody.contentLength()
-            if (contentLength > 0 && contentLength > policy.maxFileSize) {
-                throw SecurityException("响应超过大小限制: ${contentLength} > ${policy.maxFileSize}")
-            }
-            
-            val result = responseBody.string()
-            logger.debug("请求成功 [$requestId]: ${result.length} bytes")
-            
-            return result
-        } catch (e: SecurityException) {
-            throw e
-        } catch (e: Exception) {
-            logger.error("请求异常 [$requestId]: $url", e)
-            throw SecurityException("HTTP 请求异常: ${e.message}", e)
+            logger.error("注册函数失败: $name", e)
         }
     }
     
-    /**
-     * 获取文件
-     */
-    fun getFile(path: String): ByteArray {
-        if (!policy.allowFile) {
-            throw SecurityException("当前安全模式不允许文件操作")
-        }
-        
-        val target = sandboxRoot.resolve(path).normalize()
-        
-        // 路径越界检查
-        if (!target.startsWith(sandboxRoot)) {
-            logger.warn("路径越界尝试: $path -> $target")
-            throw SecurityException("禁止访问沙箱外路径")
-        }
-        
-        // 文件存在性检查
-        if (!Files.exists(target)) {
-            throw SecurityException("文件不存在: $path")
-        }
-        
-        if (!Files.isRegularFile(target)) {
-            throw SecurityException("不是常规文件: $path")
-        }
-        
-        // 文件类型检查
-        val filename = target.fileName.toString()
-        if (policy.isFileBlocked(filename)) {
-            throw SecurityException("禁止的文件类型: $filename")
-        }
-        
-        try {
-            return Files.readAllBytes(target)
-        } catch (e: Exception) {
-            logger.error("读取文件失败: $path", e)
-            throw SecurityException("读取文件失败: ${e.message}")
+    // ==================== 字符串处理 ====================
+    
+    private fun base64Encode(args: Array<Any>, scope: Scriptable): String? {
+        return args.getOrNull(0)?.toString()?.let {
+            String(Base64.getEncoder().encode(it.toByteArray()))
         }
     }
     
-    /**
-     * 写入文件
-     */
-    fun putFile(path: String, data: ByteArray) {
-        if (!policy.allowFile) {
-            throw SecurityException("当前安全模式不允许文件操作")
-        }
-        
-        // 数据大小检查
-        if (data.size > policy.maxFileSize) {
-            throw SecurityException("文件过大: ${data.size} > ${policy.maxFileSize}")
-        }
-        
-        val target = sandboxRoot.resolve(path).normalize()
-        
-        // 路径越界检查
-        if (!target.startsWith(sandboxRoot)) {
-            throw SecurityException("禁止写入沙箱外路径")
-        }
-        
-        // 文件名检查
-        val filename = target.fileName.toString()
-        if (policy.isFileBlocked(filename)) {
-            throw SecurityException("禁止写入的文件类型: $filename")
-        }
-        
-        // 文件扩展名检查
-        if (!policy.isFileExtensionAllowed(filename)) {
-            throw SecurityException("不允许的文件扩展名: $filename")
-        }
-        
-        try {
-            Files.createDirectories(target.parent)
-            Files.write(target, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-            logger.debug("写入文件: $path (${data.size} bytes)")
-        } catch (e: Exception) {
-            logger.error("写入文件失败: $path", e)
-            throw SecurityException("写入文件失败: ${e.message}")
+    private fun base64Decode(args: Array<Any>, scope: Scriptable): String? {
+        return args.getOrNull(0)?.toString()?.let {
+            String(Base64.getDecoder().decode(it))
         }
     }
     
-    /**
-     * 删除文件
-     */
-    fun deleteFile(path: String) {
-        if (!policy.allowFile) {
-            throw SecurityException("当前安全模式不允许文件操作")
-        }
-        
-        val target = sandboxRoot.resolve(path).normalize()
-        
-        if (!target.startsWith(sandboxRoot)) {
-            throw SecurityException("禁止删除沙箱外文件")
-        }
-        
-        try {
-            Files.deleteIfExists(target)
-            logger.debug("删除文件: $path")
-        } catch (e: Exception) {
-            logger.error("删除文件失败: $path", e)
-            throw SecurityException("删除文件失败: ${e.message}")
-        }
-    }
-    
-    /**
-     * 列出文件
-     */
-    fun listFiles(path: String = ""): List<String> {
-        if (!policy.allowFile) {
-            throw SecurityException("当前安全模式不允许文件操作")
-        }
-        
-        val target = if (path.isBlank()) sandboxRoot else sandboxRoot.resolve(path).normalize()
-        
-        if (!target.startsWith(sandboxRoot)) {
-            throw SecurityException("禁止列出沙箱外路径")
-        }
-        
-        if (!Files.exists(target) || !Files.isDirectory(target)) {
-            return emptyList()
-        }
-        
+    private fun md5(args: Array<Any>, scope: Scriptable): String? {
+        val input = args.getOrNull(0)?.toString() ?: return null
         return try {
-            Files.list(target)
-                .filter { Files.isRegularFile(it) }
-                .map { it.fileName.toString() }
-                .toList()
+            val md = java.security.MessageDigest.getInstance("MD5")
+            val bytes = md.digest(input.toByteArray())
+            bytes.joinToString("") { "%02x".format(it) }
         } catch (e: Exception) {
-            logger.error("列出文件失败: $path", e)
-            throw SecurityException("列出文件失败: ${e.message}")
+            logger.error("MD5 加密失败", e)
+            null
         }
     }
     
-    /**
-     * MD5 编码
-     */
-    fun md5Encode(text: String): String {
+    private fun sha1(args: Array<Any>, scope: Scriptable): String? {
+        val input = args.getOrNull(0)?.toString() ?: return null
         return try {
-            val md = MessageDigest.getInstance("MD5")
-            val digest = md.digest(text.toByteArray(StandardCharsets.UTF_8))
-            digest.joinToString("") { "%02x".format(it) }
+            val sha = java.security.MessageDigest.getInstance("SHA-1")
+            val bytes = sha.digest(input.toByteArray())
+            bytes.joinToString("") { "%02x".format(it) }
         } catch (e: Exception) {
-            logger.error("MD5 编码失败", e)
-            throw SecurityException("MD5 编码失败")
+            logger.error("SHA-1 加密失败", e)
+            null
         }
     }
     
-    /**
-     * SHA256 编码
-     */
-    fun sha256Encode(text: String): String {
+    private fun sha256(args: Array<Any>, scope: Scriptable): String? {
+        val input = args.getOrNull(0)?.toString() ?: return null
         return try {
-            val md = MessageDigest.getInstance("SHA-256")
-            val digest = md.digest(text.toByteArray(StandardCharsets.UTF_8))
-            digest.joinToString("") { "%02x".format(it) }
+            val sha = java.security.MessageDigest.getInstance("SHA-256")
+            val bytes = sha.digest(input.toByteArray())
+            bytes.joinToString("") { "%02x".format(it) }
         } catch (e: Exception) {
-            logger.error("SHA256 编码失败", e)
-            throw SecurityException("SHA256 编码失败")
+            logger.error("SHA-256 加密失败", e)
+            null
         }
     }
     
-    /**
-     * Base64 编码
-     */
-    fun base64Encode(text: String): String {
-        return Base64.getEncoder().encodeToString(text.toByteArray(StandardCharsets.UTF_8))
-    }
-    
-    /**
-     * Base64 解码
-     */
-    fun base64Decode(text: String): String {
+    private fun urlEncode(args: Array<Any>, scope: Scriptable): String? {
+        val input = args.getOrNull(0)?.toString() ?: return null
         return try {
-            String(Base64.getDecoder().decode(text), StandardCharsets.UTF_8)
+            URLEncoder.encode(input, StandardCharsets.UTF_8.name())
         } catch (e: Exception) {
-            logger.error("Base64 解码失败", e)
-            throw SecurityException("Base64 解码失败: ${e.message}")
+            logger.error("URL 编码失败", e)
+            null
         }
     }
     
-    /**
-     * URL 编码
-     */
-    fun urlEncode(text: String): String {
-        return java.net.URLEncoder.encode(text, StandardCharsets.UTF_8.name())
-    }
-    
-    /**
-     * URL 解码
-     */
-    fun urlDecode(text: String): String {
+    private fun urlDecode(args: Array<Any>, scope: Scriptable): String? {
+        val input = args.getOrNull(0)?.toString() ?: return null
         return try {
-            java.net.URLDecoder.decode(text, StandardCharsets.UTF_8.name())
+            URLDecoder.decode(input, StandardCharsets.UTF_8.name())
         } catch (e: Exception) {
             logger.error("URL 解码失败", e)
-            throw SecurityException("URL 解码失败")
+            null
         }
     }
     
-    /**
-     * 时间格式化（线程安全）
-     */
-    fun timeFormat(format: String, timestamp: Long): String {
+    // ==================== 加密 ====================
+    
+    private fun aesEncode(args: Array<Any>, scope: Scriptable): String? {
+        val data = args.getOrNull(0)?.toString() ?: return null
+        val key = args.getOrNull(1)?.toString() ?: return null
+        val iv = args.getOrNull(2)?.toString()
+        
         return try {
-            val sdf = dateFormatCache.get() ?: SimpleDateFormat(format).also {
-                dateFormatCache.set(it)
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            val keySpec = SecretKeySpec(key.toByteArray(), "AES")
+            val ivSpec = if (iv != null) {
+                IvParameterSpec(iv.toByteArray())
+            } else {
+                IvParameterSpec(ByteArray(16))
             }
-            sdf.format(Date(timestamp))
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec)
+            val encrypted = cipher.doFinal(data.toByteArray())
+            Base64.getEncoder().encodeToString(encrypted)
         } catch (e: Exception) {
-            logger.error("时间格式化失败: $format, $timestamp", e)
-            throw SecurityException("时间格式化失败")
+            logger.error("AES 加密失败", e)
+            null
         }
     }
     
-    /**
-     * 获取当前时间戳
-     */
-    fun currentTimeMillis(): Long = System.currentTimeMillis()
-    
-    /**
-     * 生成随机数
-     */
-    fun randomInt(min: Int = 0, max: Int = Int.MAX_VALUE): Int {
-        return ThreadLocalRandom.current().nextInt(min, max)
-    }
-    
-    /**
-     * 日志
-     */
-    fun log(tag: String, message: String) {
-        logger.info("[$tag] $message")
-    }
-    
-    /**
-     * 休眠
-     */
-    fun sleep(ms: Long) {
-        try {
-            Thread.sleep(ms)
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-        }
-    }
-    
-    /**
-     * 获取 Cookie
-     */
-    fun getCookies(url: String): String {
-        val domain = URL(url).host
-        return cookieStore[domain]?.joinToString("; ") { "${it.name}=${it.value}" } ?: ""
-    }
-    
-    /**
-     * 设置 Cookie
-     */
-    fun setCookies(url: String, cookieString: String) {
-        val domain = URL(url).host
-        val cookies = cookieStore.computeIfAbsent(domain) { mutableListOf() }
+    private fun aesDecode(args: Array<Any>, scope: Scriptable): String? {
+        val data = args.getOrNull(0)?.toString() ?: return null
+        val key = args.getOrNull(1)?.toString() ?: return null
+        val iv = args.getOrNull(2)?.toString()
         
-        try {
-            val httpCookies = HttpCookie.parse(cookieString)
-            cookies.addAll(httpCookies)
+        return try {
+            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+            val keySpec = SecretKeySpec(key.toByteArray(), "AES")
+            val ivSpec = if (iv != null) {
+                IvParameterSpec(iv.toByteArray())
+            } else {
+                IvParameterSpec(ByteArray(16))
+            }
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+            val decoded = Base64.getDecoder().decode(data)
+            String(cipher.doFinal(decoded))
         } catch (e: Exception) {
-            logger.warn("解析 Cookie 失败: $cookieString")
+            logger.error("AES 解密失败", e)
+            null
         }
     }
     
-    /**
-     * 清除 Cookie
-     */
-    fun clearCookies(url: String? = null) {
-        if (url != null) {
-            val domain = URL(url).host
-            cookieStore.remove(domain)
-        } else {
-            cookieStore.clear()
-        }
-    }
-    
-    /**
-     * 获取统计信息
-     */
-    fun getStats(): Map<String, Any> {
-        return mapOf(
-            "sessionRequestCount" to sessionRequestCount.get(),
-            "sandboxRoot" to sandboxRoot.toString(),
-            "policyLevel" to policy.level.name,
-            "cookieStoreSize" to cookieStore.size
-        )
-    }
-    
-    // ==================== 私有方法 ====================
-    
-    private fun createOkHttpClient(): OkHttpClient {
-        return OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-    }
-    
-    private fun checkRequestLimit() {
-        val count = sessionRequestCount.incrementAndGet()
-        if (count > policy.maxHttpRequests) {
-            throw SecurityException("请求次数超过限制: $count > ${policy.maxHttpRequests}")
-        }
-    }
-    
-    private fun validateUrl(url: String) {
-        val lowerUrl = url.lowercase()
-        if (!lowerUrl.startsWith("http://") && !lowerUrl.startsWith("https://") &&
-            !lowerUrl.startsWith("ftp://")) {
-            throw SecurityException("禁止的协议: ${url.substringBefore("://")}")
-        }
-    }
-    
-    private fun checkInternalNetwork(url: String) {
-        try {
-            val parsedUrl = URL(url)
-            val host = parsedUrl.host
-            
-            // 检查 localhost
-            if (host.equals("localhost", ignoreCase = true) || host == "127.0.0.1" || host == "::1") {
-                throw SecurityException("禁止访问本地地址: $host")
-            }
-            
-            // 检查 IP 地址
-            val addr = InetAddress.getByName(host)
-            if (isPrivateIP(addr)) {
-                logger.warn("拦截内网请求: $host -> $addr")
-                throw SecurityException("禁止访问内网地址: $host")
-            }
-            
-            // 检查端口
-            val port = parsedUrl.port
-            if (port > 0 && (port < 1024 || port in listOf(3306, 3389, 6379, 27017, 5432))) {
-                logger.warn("拦截敏感端口请求: $port")
-                throw SecurityException("禁止访问敏感端口: $port")
-            }
-        } catch (e: SecurityException) {
-            throw e
+    private fun desEncode(args: Array<Any>, scope: Scriptable): String? {
+        val data = args.getOrNull(0)?.toString() ?: return null
+        val key = args.getOrNull(1)?.toString() ?: return null
+        
+        return try {
+            val cipher = Cipher.getInstance("DES/ECB/PKCS5Padding")
+            val keySpec = SecretKeySpec(key.toByteArray(), "DES")
+            cipher.init(Cipher.ENCRYPT_MODE, keySpec)
+            val encrypted = cipher.doFinal(data.toByteArray())
+            Base64.getEncoder().encodeToString(encrypted)
         } catch (e: Exception) {
-            logger.warn("内网地址检查失败: $url", e)
-            throw SecurityException("内网地址检查失败")
+            logger.error("DES 加密失败", e)
+            null
         }
     }
     
-    private fun isPrivateIP(addr: InetAddress): Boolean {
-        return when (addr) {
-            is Inet4Address -> isPrivateIPv4(addr)
-            else -> addr.hostAddress?.contains(":") == true // 简化 IPv6 检查
+    private fun desDecode(args: Array<Any>, scope: Scriptable): String? {
+        val data = args.getOrNull(0)?.toString() ?: return null
+        val key = args.getOrNull(1)?.toString() ?: return null
+        
+        return try {
+            val cipher = Cipher.getInstance("DES/ECB/PKCS5Padding")
+            val keySpec = SecretKeySpec(key.toByteArray(), "DES")
+            cipher.init(Cipher.DECRYPT_MODE, keySpec)
+            val decoded = Base64.getDecoder().decode(data)
+            String(cipher.doFinal(decoded))
+        } catch (e: Exception) {
+            logger.error("DES 解密失败", e)
+            null
         }
     }
     
-    private fun isPrivateIPv4(addr: Inet4Address): Boolean {
-        val bytes = addr.address
-        return when (bytes[0].toInt() and 0xFF) {
-            10 -> true
-            172 -> bytes[1].toInt() and 0xFF in 16..31
-            192 -> bytes[1].toInt() and 0xFF == 168
-            127 -> true
-            169 -> bytes[1].toInt() and 0xFF == 254
-            else -> false
+    private fun rsaEncode(args: Array<Any>, scope: Scriptable): String? {
+        val data = args.getOrNull(0)?.toString() ?: return null
+        val key = args.getOrNull(1)?.toString() ?: return null
+        
+        // 简化实现：实际应使用完整的 RSA 加密
+        return try {
+            val publicKey = java.security.KeyFactory.getInstance("RSA")
+                .generatePublic(
+                    java.security.spec.X509EncodedKeySpec(
+                        Base64.getDecoder().decode(key)
+                    )
+                )
+            val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+            cipher.init(Cipher.ENCRYPT_MODE, publicKey)
+            val encrypted = cipher.doFinal(data.toByteArray())
+            Base64.getEncoder().encodeToString(encrypted)
+        } catch (e: Exception) {
+            logger.error("RSA 加密失败", e)
+            null
         }
     }
     
-    private fun checkBlockedDomain(url: String) {
-        val host = URL(url).host
-        if (policy.isDomainBlocked(host)) {
-            throw SecurityException("域名已被封禁: $host")
+    private fun rsaDecode(args: Array<Any>, scope: Scriptable): String? {
+        val data = args.getOrNull(0)?.toString() ?: return null
+        val key = args.getOrNull(1)?.toString() ?: return null
+        
+        // 简化实现：实际应使用完整的 RSA 解密
+        return try {
+            val privateKey = java.security.KeyFactory.getInstance("RSA")
+                .generatePrivate(
+                    java.security.spec.PKCS8EncodedKeySpec(
+                        Base64.getDecoder().decode(key)
+                    )
+                )
+            val cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding")
+            cipher.init(Cipher.DECRYPT_MODE, privateKey)
+            val decoded = Base64.getDecoder().decode(data)
+            String(cipher.doFinal(decoded))
+        } catch (e: Exception) {
+            logger.error("RSA 解密失败", e)
+            null
         }
     }
     
-    private fun isHeaderBlocked(name: String): Boolean {
-        val lowerName = name.lowercase()
-        return lowerName.startsWith("host-") || lowerName == "x-forwarded-for"
+    // ==================== 正则 ====================
+    
+    private fun regexMatch(args: Array<Any>, scope: Scriptable): Boolean {
+        val regex = args.getOrNull(0)?.toString() ?: return false
+        val input = args.getOrNull(1)?.toString() ?: return false
+        return try {
+            Pattern.compile(regex).matcher(input).find()
+        } catch (e: Exception) {
+            logger.error("正则匹配失败", e)
+            false
+        }
     }
     
-    private fun saveCookies(response: Response, url: String) {
-        val cookies = response.headers("Set-Cookie")
-        if (cookies.isNotEmpty()) {
-            val domain = URL(url).host
-            val cookieList = cookieStore.computeIfAbsent(domain) { mutableListOf() }
-            
-            cookies.forEach { cookieHeader ->
-                try {
-                    val httpCookies = HttpCookie.parse(cookieHeader)
-                    cookieList.addAll(httpCookies)
-                } catch (e: Exception) {
-                    logger.warn("解析响应 Cookie 失败: $cookieHeader")
+    private fun regexMatchAll(args: Array<Any>, scope: Scriptable): List<String> {
+        val regex = args.getOrNull(0)?.toString() ?: return emptyList()
+        val input = args.getOrNull(1)?.toString() ?: return emptyList()
+        return try {
+            val matcher = Pattern.compile(regex).matcher(input)
+            val results = mutableListOf<String>()
+            while (matcher.find()) {
+                results.add(matcher.group())
+            }
+            results
+        } catch (e: Exception) {
+            logger.error("正则匹配失败", e)
+            emptyList()
+        }
+    }
+    
+    private fun regexReplace(args: Array<Any>, scope: Scriptable): String? {
+        val regex = args.getOrNull(0)?.toString() ?: return null
+        val replacement = args.getOrNull(1)?.toString() ?: return null
+        val input = args.getOrNull(2)?.toString() ?: return null
+        return try {
+            Pattern.compile(regex).matcher(input).replaceAll(replacement)
+        } catch (e: Exception) {
+            logger.error("正则替换失败", e)
+            null
+        }
+    }
+    
+    private fun regexSplit(args: Array<Any>, scope: Scriptable): List<String> {
+        val regex = args.getOrNull(0)?.toString() ?: return emptyList()
+        val input = args.getOrNull(1)?.toString() ?: return emptyList()
+        return try {
+            input.split(Regex(regex))
+        } catch (e: Exception) {
+            logger.error("正则分割失败", e)
+            emptyList()
+        }
+    }
+    
+    // ==================== 日期 ====================
+    
+    private fun formatDate(args: Array<Any>, scope: Scriptable): String? {
+        val timestamp = args.getOrNull(0)
+        val pattern = args.getOrNull(1)?.toString() ?: "yyyy-MM-dd HH:mm:ss"
+        
+        return try {
+            val date = when (timestamp) {
+                is Number -> Date(timestamp.toLong())
+                is String -> SimpleDateFormat(pattern).parse(timestamp)
+                else -> Date()
+            }
+            SimpleDateFormat(pattern).format(date)
+        } catch (e: Exception) {
+            logger.error("日期格式化失败", e)
+            null
+        }
+    }
+    
+    private fun parseDate(args: Array<Any>, scope: Scriptable): Long? {
+        val dateStr = args.getOrNull(0)?.toString() ?: return null
+        val pattern = args.getOrNull(1)?.toString() ?: "yyyy-MM-dd HH:mm:ss"
+        
+        return try {
+            SimpleDateFormat(pattern).parse(dateStr).time
+        } catch (e: Exception) {
+            logger.error("日期解析失败", e)
+            null
+        }
+    }
+    
+    private fun currentTime(args: Array<Any>, scope: Scriptable): Long {
+        return System.currentTimeMillis()
+    }
+    
+    // ==================== 字符串 ====================
+    
+    private fun substring(args: Array<Any>, scope: Scriptable): String? {
+        val str = args.getOrNull(0)?.toString() ?: return null
+        val start = (args.getOrNull(1) as? Number)?.toInt() ?: 0
+        val end = (args.getOrNull(2) as? Number)?.toInt() ?: str.length
+        
+        return try {
+            str.substring(start, end.coerceAtMost(str.length))
+        } catch (e: Exception) {
+            logger.error("字符串截取失败", e)
+            null
+        }
+    }
+    
+    private fun substringBefore(args: Array<Any>, scope: Scriptable): String? {
+        val str = args.getOrNull(0)?.toString() ?: return null
+        val separator = args.getOrNull(1)?.toString() ?: return null
+        
+        return try {
+            str.substringBefore(separator)
+        } catch (e: Exception) {
+            logger.error("字符串截取失败", e)
+            null
+        }
+    }
+    
+    private fun substringAfter(args: Array<Any>, scope: Scriptable): String? {
+        val str = args.getOrNull(0)?.toString() ?: return null
+        val separator = args.getOrNull(1)?.toString() ?: return null
+        
+        return try {
+            str.substringAfter(separator)
+        } catch (e: Exception) {
+            logger.error("字符串截取失败", e)
+            null
+        }
+    }
+    
+    private fun substringBetween(args: Array<Any>, scope: Scriptable): String? {
+        val str = args.getOrNull(0)?.toString() ?: return null
+        val start = args.getOrNull(1)?.toString() ?: return null
+        val end = args.getOrNull(2)?.toString() ?: return null
+        
+        return try {
+            str.substringBetween(start, end)
+        } catch (e: Exception) {
+            logger.error("字符串截取失败", e)
+            null
+        }
+    }
+    
+    private fun trim(args: Array<Any>, scope: Scriptable): String? {
+        return args.getOrNull(0)?.toString()?.trim()
+    }
+    
+    private fun replaceAll(args: Array<Any>, scope: Scriptable): String? {
+        val str = args.getOrNull(0)?.toString() ?: return null
+        val target = args.getOrNull(1)?.toString() ?: return null
+        val replacement = args.getOrNull(2)?.toString() ?: return null
+        
+        return try {
+            str.replace(target, replacement)
+        } catch (e: Exception) {
+            logger.error("字符串替换失败", e)
+            null
+        }
+    }
+    
+    private fun replaceFirst(args: Array<Any>, scope: Scriptable): String? {
+        val str = args.getOrNull(0)?.toString() ?: return null
+        val target = args.getOrNull(1)?.toString() ?: return null
+        val replacement = args.getOrNull(2)?.toString() ?: return null
+        
+        return try {
+            str.replaceFirst(target, replacement)
+        } catch (e: Exception) {
+            logger.error("字符串替换失败", e)
+            null
+        }
+    }
+    
+    private fun split(args: Array<Any>, scope: Scriptable): List<String> {
+        val str = args.getOrNull(0)?.toString() ?: return emptyList()
+        val delimiter = args.getOrNull(1)?.toString() ?: return emptyList()
+        
+        return try {
+            str.split(delimiter)
+        } catch (e: Exception) {
+            logger.error("字符串分割失败", e)
+            emptyList()
+        }
+    }
+    
+    private fun join(args: Array<Any>, scope: Scriptable): String? {
+        val list = args.getOrNull(0) as? List<*> ?: return null
+        val delimiter = args.getOrNull(1)?.toString() ?: ""
+        
+        return try {
+            @Suppress("UNCHECKED_CAST")
+            (list as List<String>).joinToString(delimiter)
+        } catch (e: Exception) {
+            logger.error("字符串连接失败", e)
+            null
+        }
+    }
+    
+    // ==================== 集合 ====================
+    
+    private fun map(args: Array<Any>, scope: Scriptable): List<Any> {
+        val list = args.getOrNull(0) as? List<*> ?: return emptyList()
+        val func = args.getOrNull(1) as? Function ?: return emptyList()
+        
+        return try {
+            list.map { item ->
+                val jsArray = Context.getCurrentContext().newArray(scope, arrayOf(item))
+                func.call(Context.getCurrentContext(), scope, scope, arrayOf(jsArray))
+            }
+        } catch (e: Exception) {
+            logger.error("map 操作失败", e)
+            emptyList()
+        }
+    }
+    
+    private fun filter(args: Array<Any>, scope: Scriptable): List<Any> {
+        val list = args.getOrNull(0) as? List<*> ?: return emptyList()
+        val func = args.getOrNull(1) as? Function ?: return emptyList()
+        
+        return try {
+            list.filter { item ->
+                val jsArray = Context.getCurrentContext().newArray(scope, arrayOf(item))
+                val result = func.call(Context.getCurrentContext(), scope, scope, arrayOf(jsArray))
+                result == true
+            }
+        } catch (e: Exception) {
+            logger.error("filter 操作失败", e)
+            emptyList()
+        }
+    }
+    
+    private fun reduce(args: Array<Any>, scope: Scriptable): Any? {
+        val list = args.getOrNull(0) as? List<*> ?: return null
+        val func = args.getOrNull(1) as? Function ?: return null
+        val initial = args.getOrNull(2)
+        
+        return try {
+            var acc = initial
+            for (item in list) {
+                val jsArray = Context.getCurrentContext().newArray(scope, arrayOf(acc, item))
+                acc = func.call(Context.getCurrentContext(), scope, scope, arrayOf(jsArray))
+            }
+            acc
+        } catch (e: Exception) {
+            logger.error("reduce 操作失败", e)
+            null
+        }
+    }
+    
+    private fun find(args: Array<Any>, scope: Scriptable): Any? {
+        val list = args.getOrNull(0) as? List<*> ?: return null
+        val func = args.getOrNull(1) as? Function ?: return null
+        
+        return try {
+            list.firstOrNull { item ->
+                val jsArray = Context.getCurrentContext().newArray(scope, arrayOf(item))
+                val result = func.call(Context.getCurrentContext(), scope, scope, arrayOf(jsArray))
+                result == true
+            }
+        } catch (e: Exception) {
+            logger.error("find 操作失败", e)
+            null
+        }
+    }
+    
+    private fun contains(args: Array<Any>, scope: Scriptable): Boolean {
+        val list = args.getOrNull(0) as? List<*> ?: return false
+        val item = args.getOrNull(1) ?: return false
+        
+        return try {
+            list.contains(item)
+        } catch (e: Exception) {
+            logger.error("contains 操作失败", e)
+            false
+        }
+    }
+    
+    private fun sortBy(args: Array<Any>, scope: Scriptable): List<Any> {
+        val list = args.getOrNull(0) as? List<*> ?: return emptyList()
+        val func = args.getOrNull(1) as? Function
+        
+        return try {
+            if (func != null) {
+                @Suppress("UNCHECKED_CAST")
+                (list as List<Any>).sortedWith { a, b ->
+                    val jsArray = Context.getCurrentContext().newArray(scope, arrayOf(a, b))
+                    val result = func.call(Context.getCurrentContext(), scope, scope, arrayOf(jsArray))
+                    (result as? Number)?.toInt() ?: 0
                 }
+            } else {
+                list.sorted()
             }
+        } catch (e: Exception) {
+            logger.error("sortBy 操作失败", e)
+            emptyList()
         }
     }
     
-    private fun String.toRequestBody(): RequestBody {
-        return RequestBody.create(
-            MediaType.parse("application/json; charset=utf-8") ?: MediaType.parse("text/plain"),
-            this
-        )
+    private fun reverse(args: Array<Any>, scope: Scriptable): List<Any> {
+        val list = args.getOrNull(0) as? List<*> ?: return emptyList()
+        
+        return try {
+            list.reversed()
+        } catch (e: Exception) {
+            logger.error("reverse 操作失败", e)
+            emptyList()
+        }
     }
     
-    // ==================== SSL 信任所有（仅用于测试） ====================
-    
-    private class TrustAllSSLSocketFactory : javax.net.ssl.SSLSocketFactory() {
-        private val delegate = (javax.net.ssl.SSLContext.getDefault()).socketFactory
+    private fun distinct(args: Array<Any>, scope: Scriptable): List<Any> {
+        val list = args.getOrNull(0) as? List<*> ?: return emptyList()
         
-        override fun createSocket(): java.net.Socket = delegate.createSocket()
-        override fun createSocket(host: String, port: Int): java.net.Socket = delegate.createSocket(host, port)
-        override fun createSocket(host: String, port: Int, localHost: java.net.InetAddress, localPort: Int): java.net.Socket = 
-            delegate.createSocket(host, port, localHost, localPort)
-        override fun createSocket(host: java.net.InetAddress, port: Int): java.net.Socket = delegate.createSocket(host, port)
-        override fun createSocket(host: java.net.InetAddress, port: Int, localHost: java.net.InetAddress, localPort: Int): java.net.Socket = 
-            delegate.createSocket(host, port, localHost, localPort)
-        override fun createSocket(s: java.net.Socket, host: String, port: Int, autoClose: Boolean): java.net.Socket = 
-            delegate.createSocket(s, host, port, autoClose)
-        
-        override fun getDefaultCipherSuites(): Array<String> = delegate.defaultCipherSuites
-        override fun getSupportedCipherSuites(): Array<String> = delegate.supportedCipherSuites
+        return try {
+            list.distinct()
+        } catch (e: Exception) {
+            logger.error("distinct 操作失败", e)
+            emptyList()
+        }
     }
     
-    private class TrustAllHostnameVerifier : HostnameVerifier {
-        override fun verify(hostname: String, session: SSLSession): Boolean = true
+    // ==================== JSON ====================
+    
+    private fun jsonParse(args: Array<Any>, scope: Scriptable): Any? {
+        val json = args.getOrNull(0)?.toString() ?: return null
+        
+        return try {
+            com.google.gson.Gson().fromJson(json, Any::class.java)
+        } catch (e: Exception) {
+            logger.error("JSON 解析失败", e)
+            null
+        }
+    }
+    
+    private fun jsonStringify(args: Array<Any>, scope: Scriptable): String? {
+        val obj = args.getOrNull(0) ?: return null
+        
+        return try {
+            com.google.gson.Gson().toJson(obj)
+        } catch (e: Exception) {
+            logger.error("JSON 序列化失败", e)
+            null
+        }
+    }
+    
+    // ==================== 网络（受限制） ====================
+    
+    private fun httpGet(args: Array<Any>, scope: Scriptable): String? {
+        val url = args.getOrNull(0)?.toString() ?: return null
+        
+        // 检查安全策略
+        if (!securityPolicy.allows("network", url)) {
+            logger.warn("HTTP GET 被拒绝: $url")
+            return null
+        }
+        
+        return try {
+            val connection = URL(url).openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 30000
+            
+            val responseCode = connection.responseCode
+            if (responseCode == 200) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                logger.warn("HTTP GET 失败: $url, code=$responseCode")
+                null
+            }
+        } catch (e: Exception) {
+            logger.error("HTTP GET 失败: $url", e)
+            null
+        }
+    }
+    
+    private fun httpPost(args: Array<Any>, scope: Scriptable): String? {
+        val url = args.getOrNull(0)?.toString() ?: return null
+        val data = args.getOrNull(1)?.toString() ?: return null
+        
+        // 检查安全策略
+        if (!securityPolicy.allows("network", url)) {
+            logger.warn("HTTP POST 被拒绝: $url")
+            return null
+        }
+        
+        return try {
+            val connection = URL(url).openConnection() as java.net.HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.connectTimeout = 10000
+            connection.readTimeout = 30000
+            connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            
+            connection.outputStream.use { it.write(data.toByteArray()) }
+            
+            val responseCode = connection.responseCode
+            if (responseCode == 200) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                logger.warn("HTTP POST 失败: $url, code=$responseCode")
+                null
+            }
+        } catch (e: Exception) {
+            logger.error("HTTP POST 失败: $url", e)
+            null
+        }
+    }
+    
+    // ==================== 日志 ====================
+    
+    private fun log(args: Array<Any>, scope: Scriptable) {
+        logger.info(args.joinToString(" "))
+    }
+    
+    private fun error(args: Array<Any>, scope: Scriptable) {
+        logger.error(args.joinToString(" "))
+    }
+    
+    private fun warn(args: Array<Any>, scope: Scriptable) {
+        logger.warn(args.joinToString(" "))
     }
 }
